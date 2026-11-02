@@ -9,3 +9,28 @@ Inspired by Andrej Karpathy's [HackerTube project](https://karpathy.bearblog.dev
 Select text on a YouTube page, right-click, and choose **"SideKick's Selection"** to open the side panel. A local Python backend (running on Linux) handles the processing.
 
 On the surface, SideKick is a browser extension. At its core, it's a data science project: I'm building a recommendation engine from scratch.
+
+## Status
+
+Early development (M0: scaffold). See `docs/` for setup:
+
+- [Windows 11 + Chrome + WSL2](docs/setup-windows-wsl2.md) (primary dev box)
+- [ChromeOS + Chrome + Crostini](docs/setup-chromeos.md)
+
+Quick start (inside the Linux environment): `just sync && just test && just dev`, then open
+`http://localhost:8000/health` in Chrome.
+
+## Scraping disclaimer
+
+SideKick fetches public YouTube pages for personal, low-volume use (polite delays, a per-run
+page cap, no bulk crawling). It uses no API key. Scraping YouTube may violate its Terms of
+Service, which is a gray area; use it at your own risk.
+
+## Privacy
+
+Your profile, database and raw logs live in a private folder (`~/.sidekick/`, override with
+`SIDEKICK_HOME`) and are never part of this repo. `data/sample/` holds synthetic data only.
+
+## License
+
+MIT
