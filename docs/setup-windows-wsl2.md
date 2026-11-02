@@ -1,0 +1,67 @@
+# Setup: Windows 11 + Chrome + WSL2 (primary dev box)
+
+Chrome runs on Windows. The backend runs inside WSL2 (Ubuntu). Everything private lives in the
+WSL2 home at `~/.sidekick/`. WSL2 is never linked to GitHub with credentials here: you only
+`git clone`/`git pull` from the public repo.
+
+## 1. Check the WSL2 environment
+
+In Ubuntu (WSL2):
+
+```bash
+free -h; nproc; lscpu | grep 'Model name'; df -h ~
+cat /etc/wsl.conf; ps -p 1 -o comm=     # "systemd" means systemd is on
+```
+
+In Windows PowerShell: `wsl -l -v` (VERSION should be 2).
+
+If WSL2 uses too much RAM, cap it in `%USERPROFILE%\.wslconfig`:
+
+```ini
+[wsl2]
+memory=6GB
+```
+
+then run `wsl --shutdown` from PowerShell.
+
+## 2. Install tools (Ubuntu)
+
+```bash
+sudo apt update && sudo apt install -y git curl build-essential
+curl -LsSf https://astral.sh/uv/install.sh | sh        # uv (installs Python 3.12 on demand)
+curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/.local/bin
+# open a new shell so ~/.local/bin is on PATH
+```
+
+## 3. Clone inside WSL2 (not under /mnt/c)
+
+```bash
+cd ~ && git clone https://github.com/xqzr2000/YouTube-SideKick.git
+cd YouTube-SideKick
+just sync && just test
+just init        # creates ~/.sidekick/ with a starter profile.md (never overwrites)
+```
+
+To get updates later: `git pull`.
+
+## 4. Chrome-to-WSL2 reachability test
+
+```bash
+just dev
+```
+
+Open `http://localhost:8000/health` in **Windows Chrome**. Expected: `{"status":"ok",...}`.
+
+If it doesn't load: Windows 11 normally forwards WSL2 `localhost` automatically. If it doesn't, add
+to `%USERPROFILE%\.wslconfig`:
+
+```ini
+[wsl2]
+networkingMode=mirrored
+```
+
+then `wsl --shutdown` and retry. Record which setup worked here.
+
+## Notes
+- Keep the repo and `~/.sidekick/` in the WSL2 filesystem for fast I/O and safe SQLite locking.
+- The extension reads its backend URL from settings (default `http://localhost:8000`).

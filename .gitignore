@@ -1,0 +1,36 @@
+# Private SideKick data (normally lives in ~/.sidekick, outside the repo)
+.sidekick/
+profile.md
+!src/sidekick/templates/profile.md
+*.db
+*.db-journal
+*.sqlite
+raw/
+*.jsonl.gz
+models/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Notebooks / experiment tracking
+mlruns/
+.marimo/
+__marimo__/
+
+# Extension (added in M5)
+extension/node_modules/
+extension/.output/
+extension/.wxt/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
