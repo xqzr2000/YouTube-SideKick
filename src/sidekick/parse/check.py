@@ -9,10 +9,11 @@ from __future__ import annotations
 import sys
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 from sidekick.models import Candidate
 from sidekick.parse.search import parse_search
-from sidekick.parse.util import extract_json
+from sidekick.parse.util import extract_json, find_all
 from sidekick.parse.watch import parse_watch
 
 
@@ -40,7 +41,7 @@ def check_file(path: Path) -> list[str]:
         lines.append("  WARNING: looks like a consent page")
 
     watch = parse_watch(html)
-    if watch.meta or watch.upnext or watch.lockups_skipped:
+    if watch.meta or watch.upnext or watch.nonvideo_skipped:
         m = watch.meta
         if m:
             lines.append(
@@ -52,8 +53,8 @@ def check_file(path: Path) -> list[str]:
         else:
             lines.append("  watch meta: MISSING")
         lines.append(
-            f"  up-next: {len(watch.upnext)} parsed, {watch.lockups_skipped} lockupViewModel "
-            f"items NOT parsed"
+            f"  up-next: {len(watch.upnext)} videos parsed, "
+            f"{watch.nonvideo_skipped} non-video items skipped"
         )
         if watch.upnext:
             lines.append(f"  up-next fields: {_fields(watch.upnext)}")
@@ -67,12 +68,43 @@ def check_file(path: Path) -> list[str]:
     return lines
 
 
+def skeleton(node: Any, indent: int = 0, max_depth: int = 14) -> list[str]:
+    """Key structure of a JSON node: strings cut to 30 chars, lists show length + first item."""
+    pad = "  " * indent
+    if indent > max_depth:
+        return [pad + "..."]
+    out: list[str] = []
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if isinstance(v, dict | list):
+                n = f" [{len(v)}]" if isinstance(v, list) else ""
+                out.append(f"{pad}{k}{n}:")
+                out.extend(skeleton(v, indent + 1, max_depth))
+            else:
+                out.append(f"{pad}{k}: {str(v)[:30]!r}")
+    elif isinstance(node, list) and node:
+        out.extend(skeleton(node[0], indent, max_depth))
+    return out
+
+
+def skeleton_of_first_lockup(path: Path) -> list[str]:
+    html = path.read_text(encoding="utf-8", errors="replace")
+    data = extract_json(html, "ytInitialData")
+    secondary = next(find_all(data, "secondaryResults"), None) if data else None
+    lockup = next(find_all(secondary, "lockupViewModel"), None) if secondary else None
+    if lockup is None:
+        return [f"== {path.name}: no lockupViewModel in up-next"]
+    return [f"== {path.name}: first up-next lockupViewModel", *skeleton(lockup, 1)]
+
+
 def main(argv: list[str]) -> int:
     if not argv:
-        print("usage: python -m sidekick.parse.check FILE.html [...]")
+        print("usage: python -m sidekick.parse.check [--skeleton] FILE.html [...]")
         return 2
-    for arg in argv:
-        print("\n".join(check_file(Path(arg))))
+    show_skeleton = "--skeleton" in argv
+    for arg in (a for a in argv if a != "--skeleton"):
+        lines = skeleton_of_first_lockup(Path(arg)) if show_skeleton else check_file(Path(arg))
+        print("\n".join(lines))
     return 0
 
 

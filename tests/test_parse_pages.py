@@ -35,6 +35,10 @@ def test_watch_upnext_fields_and_nesting():
         "EEEEEEEEEEE",
         "FFFFFFFFFFF",
         "GGGGGGGGGGG",
+        "MMMMMMMMMMM",
+        "NNNNNNNNNNN",
+        "OOOOOOOOOOO",
+        "PPPPPPPPPPP",
     ]
     b = by_id["BBBBBBBBBBB"]
     assert (b.title, b.channel, b.duration_s, b.views) == ("Normal video", "Chan One", 754, 1234)
@@ -44,14 +48,35 @@ def test_watch_upnext_fields_and_nesting():
     assert by_id["DDDDDDDDDDD"].views == 0
 
 
-def test_watch_flags_and_skipped_lockups():
+def test_watch_flags_and_nonvideo_skipped():
     page = _watch()
     by_id = {c.video_id: c for c in page.upnext}
     assert by_id["EEEEEEEEEEE"].is_live and by_id["EEEEEEEEEEE"].views is None
     assert by_id["FFFFFFFFFFF"].is_upcoming and not by_id["FFFFFFFFFFF"].is_live
     assert by_id["GGGGGGGGGGG"].is_short
     assert not by_id["BBBBBBBBBBB"].is_live and not by_id["BBBBBBBBBBB"].is_short
-    assert page.lockups_skipped == 1
+    assert page.nonvideo_skipped == 1  # the playlist/mix lockup
+
+
+def test_watch_lockup_view_model_items():
+    by_id = {c.video_id: c for c in _watch().upnext}
+    m = by_id["MMMMMMMMMMM"]
+    assert (m.title, m.channel, m.duration_s, m.views) == (
+        "Lockup lecture",
+        "Lockup Chan",
+        4500,
+        2_500_000,
+    )
+    assert m.published_text == "4 years ago" and m.source == "upnext"
+    assert not (m.is_live or m.is_upcoming or m.is_short)
+    n = by_id["NNNNNNNNNNN"]
+    assert n.is_live and n.views is None and n.duration_s is None
+    o = by_id["OOOOOOOOOOO"]
+    assert o.is_upcoming and not o.is_live
+    assert by_id["PPPPPPPPPPP"].is_short
+    assert "QQQQQQQQQQQ" not in by_id  # playlist skipped
+    # The duplicate in lockup form doesn't replace or repeat the first entry
+    assert by_id["BBBBBBBBBBB"].title == "Normal video"
 
 
 def test_search_dedupes_and_counts_shorts():

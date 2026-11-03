@@ -36,6 +36,7 @@ record *args:
     uv run python -m sidekick.scrape.record "$@"
 
 # Show what the parsers extract from saved pages (e.g. `just parse-check ~/.sidekick/fixtures/*.html`)
+# Add --skeleton to print the key structure of the first up-next item instead
 [positional-arguments]
 parse-check *files:
     uv run python -m sidekick.parse.check "$@"
