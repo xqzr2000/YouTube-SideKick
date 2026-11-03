@@ -45,7 +45,7 @@ class VideoMeta:
 class WatchPage:
     meta: VideoMeta | None
     upnext: list[Candidate]
-    lockups_skipped: int = 0  # up-next items in a layout the parser does not handle yet
+    nonvideo_skipped: int = 0  # up-next items that aren't videos (playlists, mixes, ...)
 
 
 @dataclass

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from sidekick.models import VideoMeta, WatchPage
+from sidekick.parse.lockup import candidate_from_lockup
 from sidekick.parse.renderers import candidate_from_renderer
 from sidekick.parse.util import extract_json, find_all, parse_count
 
@@ -37,16 +38,24 @@ def parse_watch(html: str) -> WatchPage:
     meta = parse_meta(player) if isinstance(player, dict) else None
 
     upnext = []
-    lockups_skipped = 0
+    nonvideo = 0
     if isinstance(data, dict):
         secondary = next(find_all(data, "secondaryResults"), None)
         if secondary is not None:
-            for r in find_all(secondary, "compactVideoRenderer"):
-                cand = candidate_from_renderer(r)
-                if cand:
+            seen: set[str] = set()
+            # Older layout (compactVideoRenderer) and newer layout (lockupViewModel).
+            items = [
+                candidate_from_renderer(r) for r in find_all(secondary, "compactVideoRenderer")
+            ]
+            for lk in find_all(secondary, "lockupViewModel"):
+                cand = candidate_from_lockup(lk)
+                if cand is None:
+                    nonvideo += 1
+                items.append(cand)
+            for cand in items:
+                if cand and cand.video_id not in seen:
+                    seen.add(cand.video_id)
                     cand.source = "upnext"
                     upnext.append(cand)
-            # Newer layout; not parsed yet. Counted so the check tool shows when it appears.
-            lockups_skipped = sum(1 for _ in find_all(secondary, "lockupViewModel"))
 
-    return WatchPage(meta=meta, upnext=upnext, lockups_skipped=lockups_skipped)
+    return WatchPage(meta=meta, upnext=upnext, nonvideo_skipped=nonvideo)
