@@ -19,6 +19,9 @@ def test_parse_duration(text, expected):
         ("15K views", 15_000),
         ("No views", 0),
         ("1,500 watching", 1500),
+        ("33K", 33_000),
+        ("33 thousand views", 33_000),
+        ("1.4 million views", 1_400_000),
         ("", None),
     ],
 )

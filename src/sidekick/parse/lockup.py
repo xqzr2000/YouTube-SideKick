@@ -10,7 +10,11 @@ Shape (only the parts we use)::
       metadata.lockupMetadataViewModel:
         title: {content: "<title>"}
         metadata.contentMetadataViewModel.metadataRows[]:
-          metadataParts[]: {text: {content: "<channel>" | "1.2M views" | "2 years ago"}}
+          metadataParts[]: {text: {content: "<channel>" | "1.4M" | "5y ago"},
+                            accessibilityLabel: "1.4 million views"}
+
+Real pages (Nov 2026) show the view count as bare ``"1.4M"``; only the accessibility label
+says "views", so parts are matched on text *or* label.
 
 The parser searches by key name rather than fixed paths, so small layout moves don't break it.
 """
@@ -37,16 +41,26 @@ def _content(node: Any) -> str:
     return ""
 
 
-def _metadata_rows(meta: dict[str, Any]) -> list[list[str]]:
+def _metadata_parts(meta: dict[str, Any]) -> list[list[tuple[str, str]]]:
+    """Rows of (visible text, accessibility label) pairs."""
     rows = []
     for cm in find_all(meta, "contentMetadataViewModel"):
         for row in cm.get("metadataRows", []) or []:
-            parts = [_content(p.get("text")) for p in row.get("metadataParts", []) or []]
-            parts = [p for p in parts if p]
+            parts = [
+                (_content(p.get("text")), str(p.get("accessibilityLabel", "")))
+                for p in row.get("metadataParts", []) or []
+                if isinstance(p, dict)
+            ]
+            parts = [(t, a) for t, a in parts if t]
             if parts:
                 rows.append(parts)
         break
     return rows
+
+
+def _metadata_rows(meta: dict[str, Any]) -> list[list[str]]:
+    """Visible text only (used by diagnostics)."""
+    return [[t for t, _ in row] for row in _metadata_parts(meta)]
 
 
 def _badges(lockup: dict[str, Any]) -> list[tuple[str, str]]:
@@ -67,17 +81,26 @@ def candidate_from_lockup(lockup: dict[str, Any]) -> Candidate | None:
         return None
     meta = next(find_all(lockup, "lockupMetadataViewModel"), {})
     title = _content(meta.get("title")) if isinstance(meta, dict) else ""
-    rows = _metadata_rows(meta) if isinstance(meta, dict) else []
-    parts = [p for row in rows for p in row]
+    rows = _metadata_parts(meta) if isinstance(meta, dict) else []
+    pairs = [pa for row in rows for pa in row]
+    parts = [f"{t} {a}" for t, a in pairs]  # text + label, for flag checks
+
+    def is_views(t: str, a: str) -> bool:
+        return bool(_VIEWS_RE.search(t) or _VIEWS_RE.search(a))
+
+    def is_age(t: str, a: str) -> bool:
+        return bool(_AGE_RE.search(t) or _AGE_RE.search(a))
 
     # Channel: first part of the first row that isn't a view count or an age.
-    channel = ""
-    for p in rows[0] if rows else []:
-        if not _VIEWS_RE.search(p) and not _AGE_RE.search(p):
-            channel = p
-            break
-    views_text = next((p for p in parts if _VIEWS_RE.search(p)), "")
-    age_text = next((p for p in parts if _AGE_RE.search(p)), "")
+    channel = next(
+        (t for t, a in (rows[0] if rows else []) if not is_views(t, a) and not is_age(t, a)), ""
+    )
+    views_pair = next(((t, a) for t, a in pairs if is_views(t, a)), ("", ""))
+    views_text = " ".join(views_pair).strip()
+    views_num = parse_count(views_pair[0]) if views_pair[0] else None
+    if views_num is None and views_pair[1]:
+        views_num = parse_count(views_pair[1])
+    age_text = next((t for t, a in pairs if is_age(t, a)), "")
 
     badges = _badges(lockup)
     duration = next((d for d in (parse_duration(t) for t, _ in badges) if d is not None), None)
@@ -100,7 +123,7 @@ def candidate_from_lockup(lockup: dict[str, Any]) -> Candidate | None:
         title=title,
         channel=channel,
         duration_s=duration,
-        views=None if (is_live or is_upcoming) else parse_count(views_text),
+        views=None if (is_live or is_upcoming) else views_num,
         published_text=age_text,
         is_live=is_live,
         is_upcoming=is_upcoming,
