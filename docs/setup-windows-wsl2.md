@@ -65,3 +65,16 @@ then `wsl --shutdown` and retry. Record which setup worked here.
 ## Notes
 - Keep the repo and `~/.sidekick/` in the WSL2 filesystem for fast I/O and safe SQLite locking.
 - The extension reads its backend URL from settings (default `http://localhost:8000`).
+
+## 5. Record real pages and check the parser (M1)
+
+Real pages stay in the private folder (`~/.sidekick/fixtures/`), never in the repo.
+
+```bash
+just record <video id or URL> <another> --search "some query"   # 1-2 s delay between requests
+just parse-check ~/.sidekick/fixtures/*.html
+```
+
+`parse-check` prints which fields were extracted and which are missing (no page text beyond
+short titles), so its output is safe to paste back when the parser needs fixing. Set
+`SIDEKICK_USER_AGENT` to override the default browser-like User-Agent.
