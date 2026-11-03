@@ -67,7 +67,7 @@ def test_watch_lockup_view_model_items():
         4500,
         2_500_000,
     )
-    assert m.published_text == "4 years ago" and m.source == "upnext"
+    assert m.published_text == "4y ago" and m.source == "upnext"
     assert not (m.is_live or m.is_upcoming or m.is_short)
     n = by_id["NNNNNNNNNNN"]
     assert n.is_live and n.views is None and n.duration_s is None

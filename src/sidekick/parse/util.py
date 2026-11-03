@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from typing import Any
 
 _MULT = {"K": 1_000, "M": 1_000_000, "B": 1_000_000_000}
+_WORDS = {"thousand": "K", "million": "M", "billion": "B"}
 
 
 def extract_json(html: str, var_name: str) -> Any | None:
@@ -63,8 +64,11 @@ def parse_duration(text: str) -> int | None:
 
 
 def parse_count(text: str) -> int | None:
-    """``"1,234 views"`` -> 1234, ``"1.2M views"`` -> 1200000, ``"No views"`` -> 0."""
+    """``"1,234 views"`` -> 1234, ``"1.2M"`` -> 1200000, ``"33 thousand views"`` -> 33000,
+    ``"No views"`` -> 0."""
     t = text.strip()
+    for word, suffix in _WORDS.items():
+        t = re.sub(rf"\s*{word}\b", suffix, t, flags=re.I)
     if not t:
         return None
     if t.lower().startswith("no "):
