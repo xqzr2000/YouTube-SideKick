@@ -12,6 +12,11 @@ dependencies = [
 ]
 
 [dependency-groups]
+nb = [
+    "marimo>=0.9",
+    "pandas>=2.2",
+    "matplotlib>=3.9",
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",
@@ -30,6 +35,10 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
+
+[tool.ruff.lint.per-file-ignores]
+# marimo cells return tuples and reuse names across cells by design
+"notebooks/*.py" = ["B018", "F811"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

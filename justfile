@@ -6,7 +6,7 @@ default:
 
 # Install/sync the Python environment
 sync:
-    uv sync
+    uv sync --all-groups
 
 # Run the backend with auto-reload (http://localhost:8000/health)
 dev:
@@ -40,3 +40,12 @@ record *args:
 [positional-arguments]
 parse-check *files:
     uv run python -m sidekick.parse.check "$@"
+
+# Fetch a video's watch page (+ --search "q", --check-thumbs) and list the candidates
+[positional-arguments]
+fetch *args:
+    uv run python -m sidekick.scrape.cli "$@"
+
+# Open the notebooks in marimo (NB01: candidate pools)
+nb notebook="notebooks/01_candidates.py":
+    uv run --group nb marimo edit --headless {{notebook}}

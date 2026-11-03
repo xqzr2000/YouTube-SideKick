@@ -78,3 +78,41 @@ def parse_count(text: str) -> int | None:
         return None
     num = float(m.group(1).replace(",", ""))
     return int(num * _MULT.get(m.group(2) or "", 1))
+
+
+_AGE_UNITS = {
+    "y": 365.0,
+    "year": 365.0,
+    "mo": 30.0,
+    "month": 30.0,
+    "w": 7.0,
+    "week": 7.0,
+    "d": 1.0,
+    "day": 1.0,
+    "h": 1 / 24,
+    "hour": 1 / 24,
+    "m": 1 / 1440,
+    "min": 1 / 1440,
+    "minute": 1 / 1440,
+    "s": 1 / 86400,
+    "second": 1 / 86400,
+}
+_AGE_RE = re.compile(
+    r"(\d+)\s*(years?|y|months?|mo|weeks?|w|days?|d|hours?|h|minutes?|min|m|seconds?|s)\s+ago", re.I
+)
+
+
+def parse_age_days(text: str) -> float | None:
+    """Approximate age in days from relative text.
+
+    ``"9y ago"`` -> 3285, ``"1mo ago"`` -> 30, ``"Streamed 2 years ago"`` -> 730, ``"5 days ago"``
+    -> 5. Months are 30 days and years 365, so this is only for features and charts; the exact
+    date comes from the watch page.
+    """
+    m = _AGE_RE.search(text or "")
+    if not m:
+        return None
+    unit = m.group(2).lower()
+    if unit not in _AGE_UNITS:
+        unit = unit.rstrip("s")
+    return int(m.group(1)) * _AGE_UNITS[unit]

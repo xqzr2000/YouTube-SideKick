@@ -78,3 +78,16 @@ just parse-check ~/.sidekick/fixtures/*.html
 `parse-check` prints which fields were extracted and which are missing (no page text beyond
 short titles), so its output is safe to paste back when the parser needs fixing. Set
 `SIDEKICK_USER_AGENT` to override the default browser-like User-Agent.
+
+## 6. Fetch candidates and explore them (M1)
+
+```bash
+just fetch <video id or URL>                     # watch page + up-next table, raw log written
+just fetch <id> --search "query" --check-thumbs  # add searches; check midpoint thumbnails
+just nb                                          # NB01 in marimo (opens a browser URL)
+```
+
+`just fetch` waits 1-2 s between requests, stops at 60 pages, and on a consent/bot page or
+HTTP 429 refuses further fetches for 30 minutes (`~/.sidekick/blocked_until`; delete the file
+to reset). `just nb` prints a `http://localhost:2718/...` URL to open in Windows Chrome; the
+notebook reads your raw log, then `just record` fixtures, then the synthetic sample.

@@ -31,10 +31,20 @@ def parse_meta(player_response: dict) -> VideoMeta | None:
     )
 
 
-def parse_watch(html: str) -> WatchPage:
-    player = extract_json(html, "ytInitialPlayerResponse")
-    data = extract_json(html, "ytInitialData")
+def extract_watch_blobs(html: str) -> dict:
+    """The two JSON blobs a watch page carries; this is what the raw log stores."""
+    return {
+        "player": extract_json(html, "ytInitialPlayerResponse"),
+        "data": extract_json(html, "ytInitialData"),
+    }
 
+
+def parse_watch(html: str) -> WatchPage:
+    blobs = extract_watch_blobs(html)
+    return parse_watch_data(blobs["player"], blobs["data"])
+
+
+def parse_watch_data(player: dict | None, data: dict | None) -> WatchPage:
     meta = parse_meta(player) if isinstance(player, dict) else None
 
     upnext = []
