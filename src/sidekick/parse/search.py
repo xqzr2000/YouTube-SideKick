@@ -10,8 +10,15 @@ from sidekick.parse.util import extract_json, find_all
 _SHORTS_KEYS = ("reelItemRenderer", "shortsLockupViewModel")
 
 
+def extract_search_blobs(html: str) -> dict:
+    return {"data": extract_json(html, "ytInitialData")}
+
+
 def parse_search(html: str) -> SearchPage:
-    data = extract_json(html, "ytInitialData")
+    return parse_search_data(extract_search_blobs(html)["data"])
+
+
+def parse_search_data(data: dict | None) -> SearchPage:
     if not isinstance(data, dict):
         return SearchPage(candidates=[])
 

@@ -43,3 +43,24 @@ def test_text_of_and_find_all():
     assert text_of({"runs": [{"text": "a"}, {"text": "b"}]}) == "ab"
     assert text_of(None) == ""
     assert list(find_all({"a": [{"k": 1}, {"b": {"k": 2}}]}, "k")) == [1, 2]
+
+
+@pytest.mark.parametrize(
+    ("text", "days"),
+    [
+        ("9y ago", 9 * 365),
+        ("1mo ago", 30),
+        ("3w ago", 21),
+        ("5 days ago", 5),
+        ("2 years ago", 730),
+        ("Streamed 1 year ago", 365),
+        ("10m ago", 10 / 1440),
+        ("", None),
+        ("Premieres soon", None),
+    ],
+)
+def test_parse_age_days(text, days):
+    from sidekick.parse.util import parse_age_days
+
+    got = parse_age_days(text)
+    assert got == pytest.approx(days) if days is not None else got is None
