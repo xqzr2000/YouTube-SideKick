@@ -31,9 +31,11 @@ init:
     uv run python -m sidekick.config
 
 # Save raw YouTube pages to ~/.sidekick/fixtures (e.g. `just record ID1 ID2 --search "query"`)
+[positional-arguments]
 record *args:
-    uv run python -m sidekick.scrape.record {{args}}
+    uv run python -m sidekick.scrape.record "$@"
 
 # Show what the parsers extract from saved pages (e.g. `just parse-check ~/.sidekick/fixtures/*.html`)
+[positional-arguments]
 parse-check *files:
-    uv run python -m sidekick.parse.check {{files}}
+    uv run python -m sidekick.parse.check "$@"
