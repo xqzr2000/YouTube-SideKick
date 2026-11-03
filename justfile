@@ -29,3 +29,11 @@ fmt:
 # Create the private folder and a starter profile.md if missing (does not overwrite)
 init:
     uv run python -m sidekick.config
+
+# Save raw YouTube pages to ~/.sidekick/fixtures (e.g. `just record ID1 ID2 --search "query"`)
+record *args:
+    uv run python -m sidekick.scrape.record {{args}}
+
+# Show what the parsers extract from saved pages (e.g. `just parse-check ~/.sidekick/fixtures/*.html`)
+parse-check *files:
+    uv run python -m sidekick.parse.check {{files}}
