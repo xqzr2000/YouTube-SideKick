@@ -29,7 +29,7 @@ from sidekick.config import Paths, get_paths
 from sidekick.models import Candidate, VideoMeta
 from sidekick.profile.parser import Profile, normalize
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 TABLES = (
     "videos",
@@ -176,7 +176,16 @@ ALTER TABLE videos ADD COLUMN sponsor_segments INTEGER;
 ALTER TABLE videos ADD COLUMN sponsor_checked_at TEXT;
 """
 
-_MIGRATIONS = {1: _SCHEMA_V1, 2: _SCHEMA_V2}
+# v3 (M3a): labels say what they label. ``candidate`` = "is this a good video to show next
+# while watching the compute's current video?" (good/meh/bad). ``seed`` = "does this current
+# video match my Interests?" (good = yes, meh = partly, bad = no), the ground truth for the
+# interest gate (experiment E2).
+_SCHEMA_V3 = """
+ALTER TABLE labels ADD COLUMN kind TEXT NOT NULL DEFAULT 'candidate'
+    CHECK (kind IN ('candidate', 'seed'));
+"""
+
+_MIGRATIONS = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3}
 
 
 def now_iso() -> str:
@@ -519,6 +528,29 @@ class Store:
                 (ts or now_iso(), compute_id, video_id, type, note),
             )
         return int(cur.lastrowid)
+
+    def add_label(
+        self,
+        video_id: str,
+        label: str,
+        *,
+        kind: str = "candidate",
+        compute_id: str | None = None,
+        reason: str | None = None,
+        session: str | None = None,
+        ts: str | None = None,
+    ) -> int:
+        with self.conn:
+            cur = self.conn.execute(
+                "INSERT INTO labels (ts, video_id, compute_id, label, reason, session, kind) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (ts or now_iso(), video_id, compute_id, label, reason or None, session, kind),
+            )
+        return int(cur.lastrowid)
+
+    def delete_label(self, label_id: int) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM labels WHERE label_id = ?", (label_id,))
 
     def downvoted_video_ids(self) -> set[str]:
         rows = self.conn.execute("SELECT DISTINCT video_id FROM feedback WHERE type = 'downvote'")
