@@ -58,6 +58,6 @@ parse-check *files:
 fetch *args:
     uv run python -m sidekick.scrape.cli "$@"
 
-# Open the notebooks in marimo (NB01: candidate pools)
+# Open a notebook in marimo (NB01 candidate pools; `just nb notebooks/02_filters.py` for NB02)
 nb notebook="notebooks/01_candidates.py":
     uv run --group nb marimo edit --headless {{notebook}}

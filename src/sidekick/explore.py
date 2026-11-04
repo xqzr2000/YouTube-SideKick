@@ -1,4 +1,8 @@
-"""Load candidate pools for exploration (NB01) from whatever data is available.
+"""Load data for the exploration notebooks from whatever is available.
+
+``load_candidates`` (NB01) and ``load_decisions`` (NB02, see below).
+
+Candidate sources (NB01), in ``auto`` order:
 
 Sources, in ``auto`` order:
 
@@ -11,16 +15,22 @@ Sources, in ``auto`` order:
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from dataclasses import asdict
+from datetime import datetime, timedelta
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
 from sidekick.config import Paths, get_paths
+from sidekick.filters.stage_a import log_decisions, run_stage_a
 from sidekick.parse.search import parse_search, parse_search_data
 from sidekick.parse.util import parse_age_days
 from sidekick.parse.watch import parse_watch, parse_watch_data
+from sidekick.profile import Profile, load_profile, parse_profile
 from sidekick.store import rawlog
+from sidekick.store.db import Store
 
 SAMPLE_PATH = Path(__file__).resolve().parents[2] / "data" / "sample" / "pages.jsonl.gz"
 SOURCES = ("auto", "raw", "fixtures", "sample")
@@ -107,3 +117,102 @@ def load_candidates(
     else:
         rows, seeds, pages = _load_records(rawlog.read(sample_path))
     return {"source": source, "pages": pages, "candidates": rows, "seeds": seeds}
+
+
+# -- NB02: filter decisions -----------------------------------------------------------------
+
+DECISION_SOURCES = ("auto", "db", "sample")
+
+_DECISIONS_SQL = """
+SELECT d.compute_id, c.ts AS compute_ts, c.current_video_id, d.video_id, d.stage, d.kept,
+       d.reason, d.features,
+       v.title, v.channel, v.duration_s AS video_duration_s, v.lang, v.lang_conf,
+       v.sponsor_frac, v.selfpromo_frac, v.category,
+       (SELECT GROUP_CONCAT(DISTINCT k.source) FROM candidates k
+         WHERE k.compute_id = d.compute_id AND k.video_id = d.video_id) AS sources,
+       (SELECT MIN(k.position) FROM candidates k
+         WHERE k.compute_id = d.compute_id AND k.video_id = d.video_id
+           AND k.source = 'upnext') AS upnext_position
+FROM decisions d
+JOIN computes c USING (compute_id)
+LEFT JOIN videos v USING (video_id)
+ORDER BY c.ts, d.compute_id, d.stage, d.rowid
+"""
+
+_COMPUTES_SQL = """
+SELECT c.compute_id, c.ts, c.current_video_id, c.trigger, c.status, c.pages_fetched,
+       c.duration_ms, c.profile_hash,
+       (SELECT COUNT(DISTINCT video_id) FROM candidates k WHERE k.compute_id = c.compute_id)
+           AS unique_candidates,
+       (SELECT SUM(kept) FROM decisions d WHERE d.compute_id = c.compute_id AND stage = 'A')
+           AS kept_a,
+       (SELECT SUM(kept) FROM decisions d WHERE d.compute_id = c.compute_id AND stage = 'B')
+           AS kept_b
+FROM computes c
+WHERE EXISTS (SELECT 1 FROM decisions d WHERE d.compute_id = c.compute_id)
+ORDER BY c.ts
+"""
+
+
+def _decision_rows(store) -> tuple[list[dict], list[dict]]:
+    decisions = []
+    for r in store.conn.execute(_DECISIONS_SQL):
+        row = dict(r)
+        feats = json.loads(row.pop("features") or "{}")
+        row["kept"] = bool(row["kept"])
+        row.update({f"f_{k}": v for k, v in feats.items()})
+        decisions.append(row)
+    computes = [dict(r) for r in store.conn.execute(_COMPUTES_SQL)]
+    return decisions, computes
+
+
+def _sample_store(sample_path: Path, profile: Profile) -> Store:
+    """Replay the synthetic sample through Stage A into an in-memory database."""
+    store = Store(":memory:")
+    for i, rec in enumerate(rawlog.read(sample_path)):
+        kind, data = rec.get("kind"), rec.get("data") or {}
+        if kind == "watch":
+            page = parse_watch_data(data.get("player"), data.get("data"))
+            cands, source, seed = page.upnext, "upnext", rec.get("key")
+            if page.meta:
+                store.upsert_meta(page.meta)
+        elif kind == "search":
+            cands, source, seed = parse_search_data(data.get("data")).candidates, "query", None
+        else:
+            continue
+        ts = datetime.fromisoformat(rec["ts"]) + timedelta(seconds=i)
+        cid = store.start_compute(seed, trigger="sample", profile_hash=profile.hash, ts=ts)
+        store.log_candidates(cid, cands, source=source, round=0 if source == "upnext" else 1)
+        log_decisions(store, cid, run_stage_a(cands, profile, current_video_id=seed))
+        store.finish_compute(cid, pages_fetched=1)
+    return store
+
+
+def load_decisions(
+    source: str = "auto", *, paths: Paths | None = None, sample_path: Path = SAMPLE_PATH
+) -> dict[str, Any]:
+    """Return ``{"source", "profile", "decisions": [row...], "computes": [row...]}``.
+
+    ``db`` reads ``~/.sidekick/sidekick.db``; ``sample`` replays the synthetic sample through
+    Stage A with the starter profile (no enrichment). ``auto`` uses the database if it has any
+    decisions. Feature values from each decision are flattened into ``f_<name>`` columns.
+    """
+    if source not in DECISION_SOURCES:
+        raise ValueError(f"source must be one of {DECISION_SOURCES}")
+    paths = paths or get_paths()
+    if source == "auto":
+        source = "sample"
+        if paths.db.exists():
+            with Store(paths.db) as s:
+                if s.conn.execute("SELECT 1 FROM decisions LIMIT 1").fetchone():
+                    source = "db"
+    if source == "db":
+        profile = load_profile(paths)
+        with Store(paths.db) as s:
+            decisions, computes = _decision_rows(s)
+    else:
+        template = resources.files("sidekick").joinpath("templates/profile.md")
+        profile = parse_profile(template.read_text(encoding="utf-8"))
+        with _sample_store(sample_path, profile) as s:
+            decisions, computes = _decision_rows(s)
+    return {"source": source, "profile": profile, "decisions": decisions, "computes": computes}
