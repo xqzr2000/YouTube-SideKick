@@ -17,6 +17,11 @@ evidence from real pages comes from the owner's runs.
 | #4 | M1 | Parser for `lockupViewModel` up-next items; `parse-check --skeleton` |
 | #5 | M1 | Fix: up-next view counts (bare `33K` + accessibility label) |
 | #6 | M1 | Polite fetcher, `just fetch`, midpoint thumbnails, age helper, explore loader, synthetic sample, NB01 |
+| #7 | — | Dev log |
+| #8 | M2 | Profile parser + hashing, SQLite store (schema v1), compute logging, `just profile`, `just db` |
+| #9 | M2 | Stage A hard filters, fastText language ID, `just models` |
+| #10 | M2 | Stage B enrichment (24 h cache), SponsorBlock, schema v2 |
+| #11 | M2 | NB02 (what gets filtered and why), `load_decisions` |
 
 ---
 
@@ -114,3 +119,66 @@ evidence from real pages comes from the owner's runs.
   same-day political late-night clips: exactly what SideKick should filter out.
 - 5 of 12 search results also appeared in up-next, early support for a recurrence feature.
 - Search pages carried more Shorts than videos (25 vs 12, and 65 vs 25).
+
+## Session 4 — 2026-11-03: M2 profile, store, Stage A and B filters, NB02
+
+**Done**
+- PR #8: `profile.md` parser (interests, rules, don't-show-me lines including dated 👎 notes),
+  a whitespace-insensitive profile hash, an atomic writer for 👎 notes, and the SQLite store with
+  all eleven tables from the spec. `just fetch` now logs every run as a compute.
+- PR #9: Stage A hard filters and fastText language ID (`lid.176.ftz`, downloaded once).
+- PR #10: Stage B enrichment from watch pages with a 24-hour cache, language on title +
+  description, and sponsor share from SponsorBlock. Schema v2 adds the sponsor columns and
+  migrates the existing database in place.
+- PR #11: NB02, a notebook over the logged decisions: the funnel per compute, drop reasons,
+  durations against the rules, title-only vs title + description language, sponsor share, and
+  what still gets through.
+- The owner checked each PR on real pages before the next one was built: 4 computes on the MIT
+  Bayesian statistics lecture, 165 view snapshots, 132 decisions. 109 tests.
+
+**Decisions and reasons**
+- *M2 split into four PRs* (profile + store, Stage A, Stage B, notebook) so each could be
+  checked on real data before anything was built on it. The notebook got its own PR because the
+  enrichment PR already carried network code and a schema migration.
+- *The profile parser is lenient.* A hand-edited file should never crash a compute; problems
+  become warnings that `just profile` shows.
+- *Compute ids are timestamps plus a random suffix* (`20261104T035843Z-ace1e3`), so the two
+  machines' databases can be merged later without id clashes.
+- *One decision per unique video per stage, with every reason kept* (`short;duration<min`), so
+  the "why was this dropped" counts are complete rather than first-rule-wins.
+- *Language acts only at ≥ 0.80 confidence.* Short English titles often score low with fastText
+  (`MCMC` 0.12), while non-English titles score 0.90–0.99; a low-confidence title is kept and
+  re-checked in Stage B with the description.
+- *`fasttext-predict`* (an inference-only wheel) instead of `fasttext`, which needs a compiler.
+- *Stage B drops only on hard facts* (language, live, premiere, exact duration). Sponsor share,
+  age and views are features for later stages, not filters.
+- *SponsorBlock via the hash-prefix endpoint*: only 4 hex characters of the video id's hash are
+  sent. "Unknown" (API down) is stored as missing, never as 0, and the client stops after 3
+  failures so a dead API can't eat the time budget.
+- *Cheap up-next sightings never overwrite exact watch-page fields*, and view snapshots record
+  whether the count was exact or rounded.
+
+**Dead ends and fixes**
+- *Tests started calling the real SponsorBlock* once enrichment became the default in
+  `just fetch`. The CLI tests now inject a mock client, and no test touches the network.
+- *The mock served the same watch page for every id*, which hid a real case: YouTube can return
+  a page for a different video (redirect or removed video). Stage B now treats a mismatched id
+  as a failed fetch instead of filing that data under the wrong id.
+- *NB02 copied Stage A counts into the Stage B bar* for computes without enrichment; it now
+  leaves the bar out.
+
+**Findings**
+- *Up-next changes from run to run.* Within about 20 minutes the same lecture's up-next gained
+  and lost videos; political clips appeared in every run (one late-night clip in all four, and
+  up to 3 of 20 in one run). None of them break a hard rule, so they reach the soft filters.
+- *Time goes to page fetches.* A cold compute with 25 enrichments took 68 s for 27 pages
+  (~2.5 s a page, mostly the polite delay); the same compute minutes later took 22 s with 17 of
+  24 videos from the cache. At the spec's cap of 50 enrichments a cold compute would exceed the
+  90 s budget, so the cap and the backfill rounds have to be tuned together (experiment E3).
+- *Descriptions make language ID confident.* Most videos moved from 0.4–0.8 on the title alone
+  to 0.85–0.97 with the description; a few lecture pages with boilerplate descriptions stay low.
+- *SponsorBlock answered every request.* Most educational videos have no marked segments; the
+  highest seen was 12%.
+- *One borderline drop worth a look:* a two-hour lecture by a well-known statistics educator was
+  removed by `max_duration: 90m`, the kind of false removal the evaluation will track.
+

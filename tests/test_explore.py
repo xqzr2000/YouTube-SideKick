@@ -41,3 +41,35 @@ def test_raw_source_replays_parser(tmp_path, monkeypatch):
     assert len(d["candidates"]) == 10 and d["seeds"][0]["video_id"] == "AAAAAAAAAAA"
     m = next(r for r in d["candidates"] if r["video_id"] == "MMMMMMMMMMM")
     assert m["age_days"] == 4 * 365
+
+
+def test_load_decisions_sample_and_db(tmp_path):
+    from sidekick.config import Paths
+    from sidekick.explore import load_decisions
+    from sidekick.models import Candidate
+    from sidekick.store.db import Store
+
+    paths = Paths(tmp_path)
+    sample = load_decisions(paths=paths)
+    assert sample["source"] == "sample" and len(sample["computes"]) == 8
+    reasons = {r["reason"] for r in sample["decisions"]}
+    assert {"live", "short;duration<min"} <= reasons
+    assert all(r["sources"] for r in sample["decisions"])
+
+    with Store(paths.db) as s:
+        cid = s.start_compute("SEEDSEEDSEE", trigger="cli")
+        s.log_candidates(cid, [Candidate("AAAAAAAAAAA", title="t", channel="c")], source="upnext")
+        s.log_decision(
+            cid,
+            "AAAAAAAAAAA",
+            stage="A",
+            kept=False,
+            reason="duration<min",
+            features={"duration_s": 30},
+        )
+        s.finish_compute(cid)
+    db = load_decisions(paths=paths)
+    assert db["source"] == "db"
+    (row,) = db["decisions"]
+    assert row["kept"] is False and row["f_duration_s"] == 30 and row["upnext_position"] == 1
+    assert db["computes"][0]["kept_a"] == 0

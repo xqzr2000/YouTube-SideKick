@@ -102,3 +102,26 @@ def test_nb01_runs_on_sample(tmp_path, monkeypatch):
     spec.loader.exec_module(mod)
     _, defs = mod.app.run()
     assert len(defs["df"]) == 154
+
+
+def _run_nb02():
+    spec = importlib.util.spec_from_file_location("nb02", ROOT / "notebooks" / "02_filters.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    _, defs = mod.app.run()
+    return defs
+
+
+def test_nb02_runs_on_sample(tmp_path, monkeypatch):
+    pytest.importorskip("marimo")
+    monkeypatch.setenv(ENV_VAR, str(tmp_path))  # no database -> sample replayed through Stage A
+    defs = _run_nb02()
+    assert len(defs["df"]) == 154 and set(defs["df"].stage) == {"A"}
+    assert len(defs["computes"]) == 8
+
+
+def test_nb02_runs_on_db_with_stage_b(tmp_path, monkeypatch, capsys):
+    pytest.importorskip("marimo")
+    test_fetch_cli_logs_compute_to_db(tmp_path, monkeypatch, capsys)  # builds a real-shaped db
+    defs = _run_nb02()
+    assert set(defs["df"].stage) == {"A", "B"} and len(defs["computes"]) == 1
