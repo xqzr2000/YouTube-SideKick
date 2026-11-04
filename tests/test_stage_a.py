@@ -78,11 +78,12 @@ def test_each_rule_and_its_reason():
         "TOOSHORT001": "duration<min",
         "TOOLONG0001": "duration>max",
         "NODURATION1": None,
-        "GERMAN00001": "lang:de",
-        "UNSURE00001": None,  # low confidence -> kept for Stage B to re-check
+        "GERMAN00001": None,  # language is Stage B's call (title + description)
+        "UNSURE00001": None,
     }
     assert {k: v.reason for k, v in d.items()} == expected
     assert all(v.kept == (v.reason is None) for v in d.values())
+    assert d["GERMAN00001"].features["title_lang"] == "de"
     assert d["UNSURE00001"].features["title_lang"] == "fr"
     assert d["UNSURE00001"].features["title_lang_conf"] == 0.41
     assert d["KEEP0000001"].features["duration_s"] == 600

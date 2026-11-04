@@ -87,7 +87,12 @@ def test_fetch_cli_logs_compute_to_db(tmp_path, monkeypatch, capsys):
         n_kept_a = s.conn.execute(
             "SELECT COUNT(*) FROM decisions WHERE stage = 'A' AND kept = 1"
         ).fetchone()[0]
-        assert stages == {"A": n_unique, "B": n_kept_a}
+        n_kept_b = s.conn.execute(
+            "SELECT COUNT(*) FROM decisions WHERE stage = 'B' AND kept = 1"
+        ).fetchone()[0]
+        assert stages == {"A": n_unique, "B": n_kept_a, "C": n_kept_b}
+        c = s.recent_computes()[0]
+        assert c["mode"] in ("interest", "filter-only") and c["gate_rep"] == "tfidf"
 
     assert cli.main(["AAAAAAAAAAA", "--no-db", "--no-enrich"]) == 0
     with Store(tmp_path / "sidekick.db") as s:
@@ -124,4 +129,4 @@ def test_nb02_runs_on_db_with_stage_b(tmp_path, monkeypatch, capsys):
     pytest.importorskip("marimo")
     test_fetch_cli_logs_compute_to_db(tmp_path, monkeypatch, capsys)  # builds a real-shaped db
     defs = _run_nb02()
-    assert set(defs["df"].stage) == {"A", "B"} and len(defs["computes"]) == 1
+    assert set(defs["df"].stage) == {"A", "B", "C"} and len(defs["computes"]) == 1

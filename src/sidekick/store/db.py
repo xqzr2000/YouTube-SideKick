@@ -29,7 +29,7 @@ from sidekick.config import Paths, get_paths
 from sidekick.models import Candidate, VideoMeta
 from sidekick.profile.parser import Profile, normalize
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 TABLES = (
     "videos",
@@ -191,7 +191,14 @@ _SCHEMA_V4 = """
 ALTER TABLE embeddings ADD COLUMN text_hash TEXT;
 """
 
-_MIGRATIONS = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3, 4: _SCHEMA_V4}
+# v5 (M3c): the interest gate's evidence, next to the mode it decided.
+_SCHEMA_V5 = """
+ALTER TABLE computes ADD COLUMN gate_score REAL;
+ALTER TABLE computes ADD COLUMN gate_interest TEXT;
+ALTER TABLE computes ADD COLUMN gate_rep TEXT;
+"""
+
+_MIGRATIONS = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3, 4: _SCHEMA_V4, 5: _SCHEMA_V5}
 
 
 def now_iso() -> str:
@@ -449,6 +456,22 @@ class Store:
                 (status, mode, rounds_used, pages_fetched, duration_ms, error, compute_id),
             )
 
+    def set_gate(
+        self,
+        compute_id: str,
+        *,
+        mode: str,
+        score: float | None,
+        interest: str | None,
+        rep: str,
+    ) -> None:
+        with self.conn:
+            self.conn.execute(
+                """UPDATE computes SET mode = ?, gate_score = ?, gate_interest = ?, gate_rep = ?
+                   WHERE compute_id = ?""",
+                (mode, score, interest, rep, compute_id),
+            )
+
     def log_query(
         self,
         compute_id: str,
@@ -598,6 +621,11 @@ def main() -> int:
                     f"  {c['compute_id']}  {c['trigger']:<7} {c['status']:<7} "
                     f"video={c['current_video_id']}  cands={c['n_candidates']}  "
                     f"pages={c['pages_fetched']}  {secs}  profile={(c['profile_hash'] or '')[:8]}"
+                    + (
+                        f"  mode={c['mode']} gate={c['gate_score']:.2f}"
+                        if c.get("gate_score") is not None
+                        else ""
+                    )
                 )
     return 0
 
