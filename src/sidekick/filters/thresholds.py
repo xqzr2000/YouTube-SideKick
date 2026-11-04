@@ -27,12 +27,14 @@ DEFAULT_SIM = {
     "e5-small-q": {"gate": 0.10, "dont_show": 0.30, "downvoted": 0.40},
     "tfidf": {"gate": 0.05, "dont_show": 0.30, "downvoted": 0.50},
 }
-DEFAULT_TEXT = {"clickbait": 0.80, "promo": 0.67}
+DEFAULT_TEXT = {"clickbait": 0.80, "promo": 0.67}  # used until `just tune --write`
 
 # `just tune` never goes below these. With a few dozen labels, "just above the highest good
 # score" can land near 0 when no good video happens to score high, which would make a filter
 # fire on many unlabeled videos. The floors keep a small label set from doing that.
-FLOORS = {"dont_show": 0.15, "downvoted": 0.25, "clickbait": 0.50, "promo": 0.34}
+# Clickbait 0.65 (was 0.50): on 2026-11-04 real titles the bait ones scored 0.72-1.00, and 0.50
+# would have dropped "Bayesian vs. Frequentist Statistics ... MADE EASY!!!" (0.60).
+FLOORS = {"dont_show": 0.15, "downvoted": 0.25, "clickbait": 0.65, "promo": 0.34}
 
 
 @dataclass
