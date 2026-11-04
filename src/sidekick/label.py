@@ -4,8 +4,10 @@ A stop-gap until the M6 labeling app. It walks through videos that past computes
 one question per video, saving answers to the ``labels`` table:
 
 - **Seed question** (``kind=seed``), asked once per current video: *does this video match your
-  Interests?* ``g`` yes · ``m`` partly · ``b`` no. This is the ground truth for the interest
-  gate's threshold τ (E2).
+  profile's Interests lines* (printed with the question)? ``g`` yes · ``m`` partly · ``b`` no.
+  Not "do I like it": a comedy set you enjoy is still "no" if comedy isn't an Interest. This is
+  the ground truth for the interest gate's threshold τ (E2). ``--seeds`` asks it again for every
+  current video; the newest seed label per video is the one that counts.
 - **Candidate question** (``kind=candidate``): *while watching the seed video, would you want
   this one shown next?* ``g`` good · ``m`` meh · ``b`` bad, plus an optional short reason
   ("political", "clickbait", "off-topic", ...). These score the representations and soft
@@ -26,6 +28,7 @@ Examples::
     just label                  # 40 videos (default)
     just label --n 20 --seed bFZ-0FH5hfs
     just label --stats          # counts only, no questions
+    just label --seeds          # redo the seed question for every current video
 """
 
 from __future__ import annotations
@@ -40,6 +43,7 @@ from datetime import UTC, datetime
 
 from sidekick.config import get_paths
 from sidekick.parse.util import parse_age_days
+from sidekick.profile import load_profile
 from sidekick.store.db import Store
 
 # Stage A reasons that mean "SideKick would never show this", so labeling it is wasted effort.
@@ -81,6 +85,15 @@ def seeds(store: Store) -> list[str]:
            GROUP BY current_video_id ORDER BY first"""
     )
     return [r[0] for r in rows]
+
+
+def latest_seed_label(store: Store, seed_id: str) -> str | None:
+    row = store.conn.execute(
+        "SELECT label FROM labels WHERE kind = 'seed' AND video_id = ? "
+        "ORDER BY ts DESC, label_id DESC LIMIT 1",
+        (seed_id,),
+    ).fetchone()
+    return row[0] if row else None
 
 
 def seed_is_labeled(store: Store, seed_id: str) -> bool:
@@ -186,6 +199,37 @@ def describe(store: Store, video_id: str) -> list[str]:
     return lines
 
 
+_SEED_WORDS = {"good": "yes", "meh": "partly", "bad": "no"}
+
+
+def _seed_header(interests: list[str], out: Callable[[str], None]) -> None:
+    out("\n" + "=" * 100)
+    out("CURRENT VIDEO: does it match one of your profile's Interests? (not: do you like it)")
+    out("  Interests: " + (" · ".join(interests) if interests else "(none in profile.md)"))
+
+
+def ask_seed(
+    store: Store,
+    seed_id: str,
+    *,
+    interests: list[str],
+    session: str,
+    input_fn: Callable[[str], str],
+    out: Callable[[str], None],
+) -> tuple[str, int | None]:
+    """Ask the seed question once. Returns (key pressed, label_id or None)."""
+    _seed_header(interests, out)
+    for line in describe(store, seed_id):
+        out(line)
+    current = latest_seed_label(store, seed_id)
+    if current:
+        out(f"  currently: {_SEED_WORDS[current]}")
+    a = _ask("  [g] yes  [m] partly  [b] no  [s] skip  [q] quit > ", input_fn, "gmbsq")
+    if a in LABELS:
+        return a, store.add_label(seed_id, LABELS[a], kind="seed", session=session)
+    return a, None
+
+
 def _ask(prompt: str, input_fn: Callable[[str], str], allowed: str) -> str:
     while True:
         try:
@@ -203,6 +247,7 @@ def run(
     session: str,
     input_fn: Callable[[str], str] = input,
     out: Callable[[str], None] = print,
+    interests: list[str] | None = None,
 ) -> dict[str, int]:
     """Ask about each item. Returns counts of what was saved this session."""
     counts = {"seed": 0, "candidate": 0, "skipped": 0}
@@ -213,15 +258,17 @@ def run(
         it = items[i]
         if it.seed_id not in asked_seed and not seed_is_labeled(store, it.seed_id):
             asked_seed.add(it.seed_id)
-            out("\n" + "=" * 100)
-            out("NEW CURRENT VIDEO: does it match your profile's Interests?")
-            for line in describe(store, it.seed_id):
-                out(line)
-            a = _ask("  [g] yes  [m] partly  [b] no  [s] skip  [q] quit > ", input_fn, "gmbsq")
+            a, lid = ask_seed(
+                store,
+                it.seed_id,
+                interests=interests or [],
+                session=session,
+                input_fn=input_fn,
+                out=out,
+            )
             if a == "q":
                 break
-            if a in LABELS:
-                lid = store.add_label(it.seed_id, LABELS[a], kind="seed", session=session)
+            if lid is not None:
                 history.append((lid, "seed", i))
                 counts["seed"] += 1
         asked_seed.add(it.seed_id)
@@ -270,9 +317,34 @@ def run(
     return counts
 
 
+def relabel_seeds(
+    store: Store,
+    *,
+    interests: list[str],
+    session: str,
+    input_fn: Callable[[str], str] = input,
+    out: Callable[[str], None] = print,
+) -> int:
+    """Ask the seed question again for every current video. Returns how many were saved."""
+    n = 0
+    for seed_id in seeds(store):
+        a, lid = ask_seed(
+            store, seed_id, interests=interests, session=session, input_fn=input_fn, out=out
+        )
+        if a == "q":
+            break
+        n += lid is not None
+    return n
+
+
 def stats(store: Store) -> list[str]:
+    # seeds: only the newest label per video counts
     rows = store.conn.execute(
-        "SELECT kind, label, COUNT(*) FROM labels GROUP BY kind, label ORDER BY kind, label"
+        """SELECT kind, label, COUNT(*) FROM labels l
+           WHERE kind = 'candidate' OR label_id = (
+               SELECT label_id FROM labels m WHERE m.kind = 'seed' AND m.video_id = l.video_id
+               ORDER BY ts DESC, label_id DESC LIMIT 1)
+           GROUP BY kind, label ORDER BY kind, label"""
     ).fetchall()
     if not rows:
         return ["no labels yet"]
@@ -298,14 +370,24 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--seed", help="only candidates seen while this video was current")
     ap.add_argument("--session", help="session name stored with each label (default: now)")
     ap.add_argument("--stats", action="store_true", help="print label counts and exit")
+    ap.add_argument(
+        "--seeds", action="store_true", help="redo the seed question for every current video"
+    )
     args = ap.parse_args(argv)
 
     paths = get_paths()
     if not paths.db.exists():
         print(f"no database yet at {paths.db} (`just fetch <id>` creates it)")
         return 1
+    interests = load_profile(paths).interests
+    session = args.session or datetime.now(UTC).strftime("%Y%m%dT%H%MZ")
     with Store.open(paths) as store:
         if args.stats:
+            print("\n".join(stats(store)))
+            return 0
+        if args.seeds:
+            n = relabel_seeds(store, interests=interests, session=session)
+            print(f"\nsaved {n} seed label(s) (session {session})")
             print("\n".join(stats(store)))
             return 0
         items = plan(store, args.n, seed=args.seed, rng=random.Random())
@@ -314,8 +396,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         n_seeds = len({it.seed_id for it in items})
         print(f"{len(items)} videos from {n_seeds} current video(s). Answers save as you go.")
-        session = args.session or datetime.now(UTC).strftime("%Y%m%dT%H%MZ")
-        counts = run(store, items, session=session)
+        counts = run(store, items, session=session, interests=interests)
         print(
             f"\nsaved {counts['candidate']} candidate + {counts['seed']} seed label(s), "
             f"skipped {counts['skipped']} (session {session})"

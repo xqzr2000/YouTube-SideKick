@@ -293,7 +293,7 @@ def test_v1_database_is_migrated_in_place(tmp_path):
     conn.commit()
     conn.close()
     with Store(path) as s:
-        assert s.schema_version == SCHEMA_VERSION == 3
+        assert s.schema_version == SCHEMA_VERSION == 4
         v = s.get_video("OLD")
         assert v["title"] == "t" and v["sponsor_frac"] is None
         s.set_sponsor("OLD", sponsor_frac=0.1, selfpromo_frac=0.0, n_segments=1)

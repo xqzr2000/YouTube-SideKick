@@ -34,9 +34,15 @@ init:
 profile:
     uv run python -m sidekick.profile
 
-# Download the fastText language-ID model (lid.176.ftz, ~1 MB) into ~/.sidekick/models
+# Download the models into ~/.sidekick/models: fastText language ID (~1 MB) + multilingual-e5-small (~120 MB)
 models:
     uv run python -m sidekick.features.lang --download
+    uv run python -m sidekick.embed --download
+
+# Show what the text representations find similar (e.g. `just sim`, `just sim <id>`, `just sim "text"`)
+[positional-arguments]
+sim *args:
+    uv run python -m sidekick.embed "$@"
 
 # Show row counts and the latest computes in ~/.sidekick/sidekick.db
 db:
