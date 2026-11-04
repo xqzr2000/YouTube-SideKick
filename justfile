@@ -30,6 +30,14 @@ fmt:
 init:
     uv run python -m sidekick.config
 
+# Show how SideKick reads your profile.md (interests, rules, don't-show-me lines, warnings)
+profile:
+    uv run python -m sidekick.profile
+
+# Show row counts and the latest computes in ~/.sidekick/sidekick.db
+db:
+    uv run python -m sidekick.store.db
+
 # Save raw YouTube pages to ~/.sidekick/fixtures (e.g. `just record ID1 ID2 --search "query"`)
 [positional-arguments]
 record *args:

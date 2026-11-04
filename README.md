@@ -12,7 +12,8 @@ On the surface, SideKick is a browser extension. At its core, it's a data scienc
 
 ## Status
 
-Early development (M1 done: parsers, polite fetcher, first notebook). See `docs/` for setup:
+Early development (M1 done: parsers, polite fetcher, first notebook; M2 in progress: profile
+parser and SQLite logging). See `docs/` for setup:
 
 - [Windows 11 + Chrome + WSL2](docs/setup-windows-wsl2.md) (primary dev box)
 - [ChromeOS + Chrome + Crostini](docs/setup-chromeos.md)
@@ -21,6 +22,9 @@ How it's being built, session by session: [dev log](docs/devlog.md).
 
 Quick start (inside the Linux environment): `just sync && just test && just dev`, then open
 `http://localhost:8000/health` in Chrome.
+
+Useful commands: `just profile` (how your `profile.md` is read), `just fetch <video-id>` (fetch
+and log one compute), `just db` (what's in the database).
 
 ## Scraping disclaimer
 
