@@ -15,12 +15,12 @@ Reasons:
 ``keyword:<kw>``          keyword in ``exclude_keywords`` found in the title (whole words)
 ``duration<min``          shorter than ``min_duration`` (unknown duration is kept)
 ``duration>max``          longer than ``max_duration``
-``lang:<code>``           title language not in ``language`` *and* fastText is confident
 ========================  ==============================================================
 
-Title language is only acted on above ``LANG_MIN_CONF``. Titles are short and often mix
-languages, so a low-confidence guess is kept and checked again in Stage B on title +
-description.
+Language is **not** a Stage A reason. The title's fastText guess is recorded as a feature
+(``title_lang``, ``title_lang_conf``) and Stage B decides on title + description. Titles alone
+were too unreliable: on 2026-11-04 "MIT 6.S191: Reinforcement Learning" came back German at
+≥ 0.80 and was dropped, though that lecture series is one the user rates good.
 """
 
 from __future__ import annotations
@@ -82,7 +82,6 @@ def run_stage_a(
     current_video_id: str | None = None,
     downvoted: Collection[str] = (),
     detector: LangDetector | None = None,
-    lang_min_conf: float = LANG_MIN_CONF,
 ) -> list[Decision]:
     rules = profile.rules
     blocked_channels = {_norm(ch) for ch in rules.exclude_channels if _norm(ch)}
@@ -126,12 +125,6 @@ def run_stage_a(
             if guess is not None:
                 feats["title_lang"] = guess.lang
                 feats["title_lang_conf"] = round(guess.conf, 4)
-                if (
-                    allowed_langs
-                    and guess.lang not in allowed_langs
-                    and guess.conf >= lang_min_conf
-                ):
-                    reasons.append(f"lang:{guess.lang}")
         elif allowed_langs:
             feats["title_lang"] = None  # no model: language not checked
         decisions.append(Decision(c, kept=not reasons, reasons=reasons, features=feats))

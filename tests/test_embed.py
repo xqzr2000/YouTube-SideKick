@@ -130,7 +130,7 @@ def test_v3_database_gets_text_hash(tmp_path):
     conn.commit()
     conn.close()
     with Store(path) as s:
-        assert s.schema_version == 4
+        assert s.schema_version == 5
         cols = {r[1] for r in s.conn.execute("PRAGMA table_info(embeddings)")}
         assert "text_hash" in cols
 

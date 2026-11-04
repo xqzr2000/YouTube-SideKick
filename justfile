@@ -53,6 +53,11 @@ db:
 label *args:
     uv run python -m sidekick.label "$@"
 
+# Set gate + Stage C thresholds from your labels (dry run; `just tune --write` saves them)
+[positional-arguments]
+tune *args:
+    uv run python -m sidekick.tune "$@"
+
 # Save raw YouTube pages to ~/.sidekick/fixtures (e.g. `just record ID1 ID2 --search "query"`)
 [positional-arguments]
 record *args:

@@ -8,10 +8,12 @@ Examples::
 
 Every page's JSON goes to the raw log (``~/.sidekick/raw/``), and the run is logged to the
 SQLite store as a compute with ``trigger=cli`` (videos, view snapshots, queries, candidates).
-Stage A hard filters then run over all unique candidates, and Stage B enriches the survivors
-(watch pages, SponsorBlock, language on title + description). Dropped videos are listed with
-their reasons and every decision is logged. ``--no-enrich`` skips Stage B; ``--no-db`` skips
-the database. No ranking yet.
+Stage A hard filters then run over all unique candidates, Stage B enriches the survivors
+(watch pages, SponsorBlock, language on title + description), the interest gate picks the mode
+and Stage C applies the soft filters (Don't-show-me / downvoted similarity, clickbait, promo).
+Dropped videos are listed with their reasons and every decision is logged. ``--no-enrich``
+skips Stage B, ``--no-stage-c`` the gate and Stage C, ``--no-db`` the database (and with it
+Stage C, which needs the database for vectors). No ranking yet.
 """
 
 from __future__ import annotations
@@ -22,8 +24,10 @@ import time
 
 from sidekick.config import ensure_home
 from sidekick.features.lang import load_detector
+from sidekick.filters import thresholds as thresholds_mod
 from sidekick.filters.stage_a import Decision, log_decisions, run_stage_a
 from sidekick.filters.stage_b import ENRICH_CAP, EnrichStats, run_stage_b
+from sidekick.filters.stage_c import GateResult, build_space, interest_gate, run_stage_c
 from sidekick.models import Candidate
 from sidekick.parse.util import parse_age_days
 from sidekick.profile import load_profile
@@ -87,7 +91,7 @@ def print_stage_a(decisions: list[Decision], lang_checked: bool) -> None:
     if langs:
         low = sum(1 for _, conf in langs if conf < 0.8)
         top = sorted({lang for lang, _ in langs})
-        print(f"  title languages: {', '.join(top)}  ({low} below 0.80 confidence, kept)")
+        print(f"  title languages: {', '.join(top)}  ({low} below 0.80; Stage B decides)")
 
 
 def print_stage_b(decisions: list[Decision], stats: EnrichStats) -> None:
@@ -117,6 +121,36 @@ def print_stage_b(decisions: list[Decision], stats: EnrichStats) -> None:
         )
 
 
+def print_stage_c(gate: GateResult, decisions: list[Decision], secs: float, stats) -> None:
+    if gate.score is None:
+        print(f"\ninterest gate: {gate.mode} (no Interests or no current-video data)")
+    else:
+        print(
+            f"\ninterest gate: {gate.score:.2f} vs tau {gate.tau:.2f} ({gate.rep}, best "
+            f"{gate.best_interest!r}) -> {gate.mode} mode"
+        )
+    kept = sum(d.kept for d in decisions)
+    print(
+        f"Stage C: kept {kept} of {len(decisions)}  ({gate.rep}; vectors "
+        f"{stats.get('computed', 0)} computed, {stats.get('cached', 0)} cached, {secs:.1f} s)"
+    )
+    print(
+        f"  {'video_id':<11}  {'kept':<22}  {'dont':>5}  {'int':>5}  {'seed':>5}  cb   pr   title"
+    )
+
+    def n(x):
+        return "    -" if x is None else f"{x:5.2f}"
+
+    for d in sorted(decisions, key=lambda d: (d.kept, -(d.features.get("dont_show_sim") or 0))):
+        f = d.features
+        status = "yes" if d.kept else f"NO {d.reason}"
+        print(
+            f"  {d.video_id:<11}  {status[:22]:<22}  {n(f.get('dont_show_sim'))}  "
+            f"{n(f.get('interest_sim'))}  {n(f.get('seed_sim'))}  {f['clickbait']:.2f} "
+            f"{f['promo']:.2f} {d.candidate.title[:38]}"
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Fetch a watch page (+ searches) and list candidates")
     ap.add_argument("video", help="video id or watch URL")
@@ -131,6 +165,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--enrich-cap", type=int, default=ENRICH_CAP, help="max survivors to enrich (default 50)"
     )
+    ap.add_argument("--no-stage-c", action="store_true", help="skip the interest gate and Stage C")
     args = ap.parse_args(argv)
 
     paths = ensure_home()
@@ -223,7 +258,31 @@ def main(argv: list[str] | None = None) -> int:
                 if store and cid:
                     log_decisions(store, cid, b_decisions, stage="B")
                 print_stage_b(b_decisions, stats)
+                survivors = [d.candidate for d in b_decisions if d.kept]
+            else:
+                survivors = [d.candidate for d in decisions if d.kept]
             pages = f.pages_fetched
+
+            if store and not args.no_stage_c:
+                t_c = time.monotonic()
+                th = thresholds_mod.load(paths)
+                space = build_space(
+                    store, profile, paths=paths, extra_ids=[vid, *[c.video_id for c in survivors]]
+                )
+                gate = interest_gate(store, space, vid, th.for_rep(space.name)["gate"])
+                c_decisions = run_stage_c(store, space, survivors, current_id=vid, thresholds=th)
+                if cid:
+                    store.set_gate(
+                        cid,
+                        mode=gate.mode,
+                        score=gate.score,
+                        interest=gate.best_interest,
+                        rep=gate.rep,
+                    )
+                    log_decisions(store, cid, c_decisions, stage="C")
+                print_stage_c(gate, c_decisions, time.monotonic() - t_c, space.stats)
+                if th.source == "defaults":
+                    print("  (default thresholds; `just tune` sets them from your labels)")
     except BlockedError as e:
         pages = f.pages_fetched if f else pages
         finish("blocked", str(e))
