@@ -138,13 +138,15 @@ def run_stage_a(
     return decisions
 
 
-def log_decisions(store, compute_id: str, decisions: Iterable[Decision]) -> None:
+def log_decisions(
+    store, compute_id: str, decisions: Iterable[Decision], *, stage: str = STAGE
+) -> None:
     with store.conn:
         for d in decisions:
             store.log_decision(
                 compute_id,
                 d.video_id,
-                stage=STAGE,
+                stage=stage,
                 kept=d.kept,
                 reason=d.reason,
                 features=d.features,

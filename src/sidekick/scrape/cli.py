@@ -8,8 +8,10 @@ Examples::
 
 Every page's JSON goes to the raw log (``~/.sidekick/raw/``), and the run is logged to the
 SQLite store as a compute with ``trigger=cli`` (videos, view snapshots, queries, candidates).
-Stage A hard filters then run over all unique candidates; the dropped ones are listed with
-their reasons and every decision is logged. ``--no-db`` skips the database. No ranking yet.
+Stage A hard filters then run over all unique candidates, and Stage B enriches the survivors
+(watch pages, SponsorBlock, language on title + description). Dropped videos are listed with
+their reasons and every decision is logged. ``--no-enrich`` skips Stage B; ``--no-db`` skips
+the database. No ranking yet.
 """
 
 from __future__ import annotations
@@ -21,11 +23,13 @@ import time
 from sidekick.config import ensure_home
 from sidekick.features.lang import load_detector
 from sidekick.filters.stage_a import Decision, log_decisions, run_stage_a
+from sidekick.filters.stage_b import ENRICH_CAP, EnrichStats, run_stage_b
 from sidekick.models import Candidate
 from sidekick.parse.util import parse_age_days
 from sidekick.profile import load_profile
 from sidekick.scrape.fetcher import BlockedError, FetchConfig, Fetcher, PageCapReached
 from sidekick.scrape.record import video_id_from
+from sidekick.scrape.sponsorblock import SponsorBlock
 from sidekick.store.db import Store
 
 
@@ -86,6 +90,33 @@ def print_stage_a(decisions: list[Decision], lang_checked: bool) -> None:
         print(f"  title languages: {', '.join(top)}  ({low} below 0.80 confidence, kept)")
 
 
+def print_stage_b(decisions: list[Decision], stats: EnrichStats) -> None:
+    kept = sum(d.kept for d in decisions)
+    print(
+        f"\nStage B: kept {kept} of {len(decisions)}  (pages fetched {stats.fetched}, "
+        f"from cache {stats.cached}, failed {stats.failed}, over cap {stats.over_cap}; "
+        f"SponsorBlock calls {stats.sponsor_calls}, unknown {stats.sponsor_unknown})"
+    )
+    print(f"  {'video_id':<11}  {'kept':<20}  {'age_d':>6}  {'lang':<8}  {'spons':>5}  title")
+    for d in decisions:
+        f = d.features
+        if not f.get("enriched"):
+            print(f"  {d.video_id:<11}  {'(not enriched)':<20}")
+            continue
+        lang = f"{f.get('lang', '-')}" + (
+            f" {f['lang_conf']:.2f}" if f.get("lang_conf") is not None else ""
+        )
+        sp = f.get("sponsor_frac")
+        sp_s = "-" if sp is None else f"{100 * (sp + (f.get('selfpromo_frac') or 0)):.0f}%"
+        age = f.get("age_days")
+        age_s = "-" if age is None else f"{age:.0f}"
+        status = "yes" if d.kept else f"NO {d.reason}"
+        print(
+            f"  {d.video_id:<11}  {status[:20]:<20}  {age_s:>6}  {lang:<8}  {sp_s:>5}  "
+            f"{d.candidate.title[:40]}"
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Fetch a watch page (+ searches) and list candidates")
     ap.add_argument("video", help="video id or watch URL")
@@ -94,6 +125,12 @@ def main(argv: list[str] | None = None) -> int:
         "--check-thumbs", action="store_true", help="check midpoint thumbnails (first 3 up-next)"
     )
     ap.add_argument("--no-db", action="store_true", help="don't log this run to sidekick.db")
+    ap.add_argument(
+        "--no-enrich", action="store_true", help="skip Stage B (watch pages + SponsorBlock)"
+    )
+    ap.add_argument(
+        "--enrich-cap", type=int, default=ENRICH_CAP, help="max survivors to enrich (default 50)"
+    )
     args = ap.parse_args(argv)
 
     paths = ensure_home()
@@ -159,6 +196,33 @@ def main(argv: list[str] | None = None) -> int:
                 for c in [vid, *[c.video_id for c in page.upnext[:3]]]:
                     t = f.check_thumbnail(c)
                     print(f"  {t.status} {t.content_type:<11} {t.size:>7,} B  {t.url}")
+
+            decisions = run_stage_a(
+                all_cands,
+                profile,
+                current_video_id=vid,
+                downvoted=store.downvoted_video_ids() if store else (),
+                detector=detector,
+            )
+            if store and cid:
+                log_decisions(store, cid, decisions)
+            print_stage_a(decisions, lang_checked=detector is not None)
+
+            if not args.no_enrich:
+                survivors = [d.candidate for d in decisions if d.kept]
+                with SponsorBlock() as sb:
+                    b_decisions, stats = run_stage_b(
+                        survivors,
+                        profile,
+                        fetcher=f,
+                        store=store,
+                        sponsorblock=sb,
+                        detector=detector,
+                        cap=args.enrich_cap,
+                    )
+                if store and cid:
+                    log_decisions(store, cid, b_decisions, stage="B")
+                print_stage_b(b_decisions, stats)
             pages = f.pages_fetched
     except BlockedError as e:
         pages = f.pages_fetched if f else pages
@@ -174,16 +238,6 @@ def main(argv: list[str] | None = None) -> int:
         pages = f.pages_fetched if f else pages
         finish("error", repr(e))
         raise
-    decisions = run_stage_a(
-        all_cands,
-        profile,
-        current_video_id=vid,
-        downvoted=store.downvoted_video_ids() if store else (),
-        detector=detector,
-    )
-    if store and cid:
-        log_decisions(store, cid, decisions)
-    print_stage_a(decisions, lang_checked=detector is not None)
     finish("ok")
     print(f"\n{pages} page(s) in {time.monotonic() - t0:.1f}s; raw log in {paths.raw_dir}")
     if cid:

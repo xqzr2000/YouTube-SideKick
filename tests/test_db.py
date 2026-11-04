@@ -151,4 +151,4 @@ def test_db_cli(tmp_path, monkeypatch, capsys):
         s.finish_compute(cid, pages_fetched=1, duration_ms=1500)
     assert dbmod.main() == 0
     out = capsys.readouterr().out
-    assert "schema v1" in out and cid in out and "1.5s" in out
+    assert f"schema v{SCHEMA_VERSION}" in out and cid in out and "1.5s" in out
