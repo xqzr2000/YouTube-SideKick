@@ -130,3 +130,26 @@ def test_v2_database_gets_label_kind(tmp_path):
         assert s.conn.execute("SELECT kind FROM labels").fetchone()[0] == "candidate"
         with pytest.raises(sqlite3.IntegrityError):
             s.add_label("Y", "good", kind="nope")
+
+
+def test_seed_prompt_shows_interests_and_seeds_mode_relabels(store):
+    lines = []
+    items = lab.plan(store, 1, seed=SEED, rng=random.Random(0))
+    lab.run(
+        store,
+        items,
+        session="t",
+        input_fn=_answers("g", "q"),
+        out=lines.append,
+        interests=["reinforcement learning", "chemometrics"],
+    )
+    assert any("Interests: reinforcement learning · chemometrics" in x for x in lines)
+    lines.clear()
+    # redo seeds: SEED yes -> no; SEED2 (never labeled) skipped
+    n = lab.relabel_seeds(
+        store, interests=[], session="t2", input_fn=_answers("b", "s"), out=lines.append
+    )
+    assert n == 1 and any("currently: yes" in x for x in lines)
+    assert lab.latest_seed_label(store, SEED) == "bad"
+    assert "seed       bad      1" in "\n".join(lab.stats(store))
+    assert "seed       good" not in "\n".join(lab.stats(store))
