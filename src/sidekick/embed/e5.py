@@ -5,8 +5,11 @@ The model is Xenova's int8-quantized ONNX export of ``intfloat/multilingual-e5-s
 into ``~/.sidekick/models/fastembed/`` (``just models``) and is never committed. Without it,
 e5 is simply unavailable and the TF-IDF / LSA representations still work.
 
-e5 models expect a prefix. Everything here is symmetric similarity (video ↔ video,
-video ↔ profile line), for which the model card says to prefix every text with ``query: ``.
+e5 models expect a prefix. The default (``e5-small-q``) treats everything as symmetric
+similarity and prefixes every text with ``query: ``. The variant ``e5-small-qp``
+(``E5Rep.with_passages()``) is the retrieval convention instead: profile lines and free text get
+``query: ``, video texts get ``passage: ``. That fits a three-word profile line matched against
+a long video text. Which one separates your labels better is measured by ``just sim --eval``.
 Vectors are mean-pooled and L2-normalized, so cosine similarity is a dot product.
 
 ``fastembed`` doesn't ship this model in its built-in list, so it is registered as a custom
@@ -22,11 +25,13 @@ import numpy as np
 
 from sidekick.config import Paths, get_paths
 
-NAME = "e5-small-q"  # value of embeddings.model for this representation
+NAME = "e5-small-q"  # value of embeddings.model: every text "query: "
+NAME_QP = "e5-small-qp"  # videos "passage: ", profile lines / free text "query: "
 HF_REPO = "Xenova/multilingual-e5-small"
 MODEL_FILE = "onnx/model_quantized.onnx"
 DIM = 384
 PREFIX = "query: "
+DOC_PREFIX = "passage: "
 BATCH = 16  # small batches keep peak memory low on the 8 GB Chromebook
 
 _registered = False
@@ -67,7 +72,6 @@ def _register() -> None:
 class E5Rep:
     """The e5 representation. ``fit`` is a no-op; vectors are cacheable per video."""
 
-    name = NAME
     cacheable = True
 
     def __init__(
@@ -76,7 +80,14 @@ class E5Rep:
         *,
         threads: int | None = None,
         specific_model_path: str | None = None,
+        doc_prefix: str = PREFIX,
+        _model=None,
     ) -> None:
+        self.doc_prefix = doc_prefix
+        self.name = NAME if doc_prefix == PREFIX else NAME_QP
+        if _model is not None:
+            self._model = _model
+            return
         from fastembed import TextEmbedding
 
         _register()
@@ -85,11 +96,23 @@ class E5Rep:
             model_name=HF_REPO, cache_dir=str(cache_dir(paths)), threads=threads, **kwargs
         )
 
+    def with_passages(self) -> E5Rep:
+        """The query/passage variant, sharing this loaded model (no second load)."""
+        return E5Rep(doc_prefix=DOC_PREFIX, _model=self._model)
+
     def fit(self, corpus: Sequence[str]) -> E5Rep:
         return self
 
     def encode(self, texts: Sequence[str]) -> np.ndarray:
-        texts = [PREFIX + (t or "") for t in texts]
+        """Profile lines and free text (``query: ``)."""
+        return self._embed(texts, PREFIX)
+
+    def encode_docs(self, texts: Sequence[str]) -> np.ndarray:
+        """Video texts (``query: `` for e5-small-q, ``passage: `` for e5-small-qp)."""
+        return self._embed(texts, self.doc_prefix)
+
+    def _embed(self, texts: Sequence[str], prefix: str) -> np.ndarray:
+        texts = [prefix + (t or "") for t in texts]
         if not texts:
             return np.zeros((0, DIM), dtype=np.float32)
         vecs = np.asarray(list(self._model.embed(texts, batch_size=BATCH)), dtype=np.float32)
