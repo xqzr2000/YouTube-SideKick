@@ -29,7 +29,7 @@ from sidekick.config import Paths, get_paths
 from sidekick.models import Candidate, VideoMeta
 from sidekick.profile.parser import Profile, normalize
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 TABLES = (
     "videos",
@@ -185,7 +185,13 @@ ALTER TABLE labels ADD COLUMN kind TEXT NOT NULL DEFAULT 'candidate'
     CHECK (kind IN ('candidate', 'seed'));
 """
 
-_MIGRATIONS = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3}
+# v4 (M3b): cached embeddings remember which text they were made from, so a video whose
+# description arrives later (enrichment) gets re-embedded instead of keeping a title-only vector.
+_SCHEMA_V4 = """
+ALTER TABLE embeddings ADD COLUMN text_hash TEXT;
+"""
+
+_MIGRATIONS = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3, 4: _SCHEMA_V4}
 
 
 def now_iso() -> str:
