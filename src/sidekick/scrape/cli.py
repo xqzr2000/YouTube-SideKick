@@ -8,7 +8,8 @@ Examples::
 
 Every page's JSON goes to the raw log (``~/.sidekick/raw/``), and the run is logged to the
 SQLite store as a compute with ``trigger=cli`` (videos, view snapshots, queries, candidates).
-``--no-db`` skips the database. No filtering or ranking yet.
+Stage A hard filters then run over all unique candidates; the dropped ones are listed with
+their reasons and every decision is logged. ``--no-db`` skips the database. No ranking yet.
 """
 
 from __future__ import annotations
@@ -18,6 +19,8 @@ import sys
 import time
 
 from sidekick.config import ensure_home
+from sidekick.features.lang import load_detector
+from sidekick.filters.stage_a import Decision, log_decisions, run_stage_a
 from sidekick.models import Candidate
 from sidekick.parse.util import parse_age_days
 from sidekick.profile import load_profile
@@ -62,6 +65,27 @@ def print_table(title: str, cands: list[Candidate]) -> None:
         )
 
 
+def print_stage_a(decisions: list[Decision], lang_checked: bool) -> None:
+    kept = sum(d.kept for d in decisions)
+    print(f"\nStage A: kept {kept} of {len(decisions)} unique videos", end="")
+    print("" if lang_checked else "  (language not checked: run `just models`)")
+    dropped = [d for d in decisions if not d.kept]
+    if dropped:
+        print(f"  {'video_id':<11}  {'reason':<24}  channel / title")
+        for d in dropped:
+            c = d.candidate
+            print(f"  {c.video_id:<11}  {d.reason[:24]:<24}  {c.channel[:20]} | {c.title[:40]}")
+    langs = [
+        (d.features.get("title_lang"), d.features.get("title_lang_conf"))
+        for d in decisions
+        if d.features.get("title_lang")
+    ]
+    if langs:
+        low = sum(1 for _, conf in langs if conf < 0.8)
+        top = sorted({lang for lang, _ in langs})
+        print(f"  title languages: {', '.join(top)}  ({low} below 0.80 confidence, kept)")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Fetch a watch page (+ searches) and list candidates")
     ap.add_argument("video", help="video id or watch URL")
@@ -75,9 +99,11 @@ def main(argv: list[str] | None = None) -> int:
     paths = ensure_home()
     vid = video_id_from(args.video)
     store = None if args.no_db else Store.open(paths)
+    profile = load_profile(paths)
+    detector = load_detector(paths)
     cid = None
+    all_cands: list[Candidate] = []
     if store:
-        profile = load_profile(paths)
         cid = store.start_compute(
             vid, trigger="cli", profile_hash=store.save_profile_version(profile)
         )
@@ -113,6 +139,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
             else:
                 print(f"current: {vid}  (no metadata found)")
+            all_cands.extend(page.upnext)
             print_table("up-next", page.upnext)
             if page.nonvideo_skipped:
                 print(f"     ({page.nonvideo_skipped} non-video items skipped)")
@@ -123,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
                         cid, round=1, query_text=q, method="manual", n_results=len(sp.candidates)
                     )
                     store.log_candidates(cid, sp.candidates, source="query", round=1, query=q)
+                all_cands.extend(sp.candidates)
                 print_table(f"search {q!r}", sp.candidates)
                 if sp.shorts_skipped:
                     print(f"     ({sp.shorts_skipped} Shorts items skipped)")
@@ -146,6 +174,16 @@ def main(argv: list[str] | None = None) -> int:
         pages = f.pages_fetched if f else pages
         finish("error", repr(e))
         raise
+    decisions = run_stage_a(
+        all_cands,
+        profile,
+        current_video_id=vid,
+        downvoted=store.downvoted_video_ids() if store else (),
+        detector=detector,
+    )
+    if store and cid:
+        log_decisions(store, cid, decisions)
+    print_stage_a(decisions, lang_checked=detector is not None)
     finish("ok")
     print(f"\n{pages} page(s) in {time.monotonic() - t0:.1f}s; raw log in {paths.raw_dir}")
     if cid:

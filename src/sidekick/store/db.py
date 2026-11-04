@@ -468,6 +468,10 @@ class Store:
             )
         return int(cur.lastrowid)
 
+    def downvoted_video_ids(self) -> set[str]:
+        rows = self.conn.execute("SELECT DISTINCT video_id FROM feedback WHERE type = 'downvote'")
+        return {r[0] for r in rows}
+
     def commit(self) -> None:
         self.conn.commit()
 

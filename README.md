@@ -23,8 +23,9 @@ How it's being built, session by session: [dev log](docs/devlog.md).
 Quick start (inside the Linux environment): `just sync && just test && just dev`, then open
 `http://localhost:8000/health` in Chrome.
 
-Useful commands: `just profile` (how your `profile.md` is read), `just fetch <video-id>` (fetch
-and log one compute), `just db` (what's in the database).
+Useful commands: `just models` (one-time ~1 MB language-ID download), `just profile` (how your
+`profile.md` is read), `just fetch <video-id>` (fetch, run the Stage A filters and log one
+compute), `just db` (what's in the database).
 
 ## Scraping disclaimer
 
