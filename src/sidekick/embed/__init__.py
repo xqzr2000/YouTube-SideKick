@@ -79,15 +79,16 @@ def encode_videos(
     Cacheable representations read and write the ``embeddings`` table; the others just encode.
     """
     texts = video_texts(store, video_ids)
+    enc = getattr(rep, "encode_docs", rep.encode)  # e5 variants prefix video texts differently
     if not rep.cacheable:
-        return rep.encode(texts), {"cached": 0, "computed": len(texts)}
+        return enc(texts), {"cached": 0, "computed": len(texts)}
     hashes = [text_hash(t) for t in texts]
     vecs: list[np.ndarray | None] = [
         _get_cached(store, rep.name, vid, h) for vid, h in zip(video_ids, hashes, strict=True)
     ]
     todo = [i for i, v in enumerate(vecs) if v is None]
     if todo:
-        new = rep.encode([texts[i] for i in todo])
+        new = enc([texts[i] for i in todo])
         with store.conn:
             for i, vec in zip(todo, new, strict=True):
                 _put_cached(store, rep.name, video_ids[i], hashes[i], vec)
@@ -96,6 +97,14 @@ def encode_videos(
     if not vecs:
         return np.zeros((0, 0), dtype=np.float32), stats
     return np.vstack(vecs).astype(np.float32), stats
+
+
+def center(x: np.ndarray, mean: np.ndarray) -> np.ndarray:
+    """Subtract a mean vector and re-normalize rows (the standard fix for embedding anisotropy:
+    e5 cosines bunch up around 0.7–0.9 because all vectors share a common direction)."""
+    y = x - mean
+    n = np.linalg.norm(y, axis=1, keepdims=True)
+    return (y / np.where(n == 0, 1, n)).astype(np.float32)
 
 
 def cosine(a: np.ndarray, b: np.ndarray) -> np.ndarray:

@@ -6,6 +6,7 @@ Examples::
     just sim bFZ-0FH5hfs             # nearest videos in the database to this one
     just sim "political late-night"  # same, for any text
     just sim --rep e5-small-q        # one representation only
+    just sim --eval                  # score every representation against your labels
 
 ``python -m sidekick.embed --download`` (part of ``just models``) fetches the e5 model.
 
@@ -113,7 +114,7 @@ def neighbours(store, reps, query, profile, k, out=print) -> None:
 
 
 def warm_e5(store, reps, out=print) -> None:
-    e5 = next((r for r in reps if r.name == e5mod.NAME), None)
+    e5 = next((r for r in reps if r.cacheable), None)
     if e5 is None:
         out("e5: model not downloaded (run `just models`); showing tfidf and lsa only")
         return
@@ -122,7 +123,7 @@ def warm_e5(store, reps, out=print) -> None:
     dt = time.perf_counter() - t0
     per = dt / stats["computed"] if stats["computed"] else 0.0
     out(
-        f"e5: {stats['computed']} embedded + {stats['cached']} cached in {dt:.1f} s"
+        f"{e5.name}: {stats['computed']} embedded + {stats['cached']} cached in {dt:.1f} s"
         + (f" ({per * 1000:.0f} ms/video)" if stats["computed"] else "")
     )
 
@@ -151,6 +152,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--rep", help="only this representation (tfidf, lsa, e5-small-q)")
     ap.add_argument("--k", type=int, default=8, help="how many neighbours (default 8)")
     ap.add_argument("--download", action="store_true", help="download the e5 model and exit")
+    ap.add_argument("--eval", action="store_true", help="score representations against your labels")
     args = ap.parse_args(argv)
     if args.download:
         return download()
@@ -168,6 +170,18 @@ def main(argv: list[str] | None = None) -> int:
             if not reps:
                 print(f"unknown or unavailable representation {args.rep!r}", file=sys.stderr)
                 return 1
+        if args.eval:
+            from sidekick.embed.evaluate import evaluate, report
+
+            e5 = next((r for r in reps if r.name == e5mod.NAME), None)
+            if e5 is not None and not args.rep:
+                reps.append(e5.with_passages())
+            for r in reps:
+                if r.cacheable:
+                    warm_e5(store, [r])
+            res = evaluate(store, reps, profile.interests, [d.text for d in profile.dont_show])
+            print("\n".join(report(res)))
+            return 0
         warm_e5(store, reps)
         if args.query:
             neighbours(store, reps, args.query, profile, args.k)

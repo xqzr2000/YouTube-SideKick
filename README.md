@@ -27,7 +27,8 @@ Useful commands: `just models` (one-time downloads: ~1 MB language ID, ~120 MB
 multilingual-e5-small), `just profile` (how your
 `profile.md` is read), `just fetch <video-id>` (fetch, run Stage A + B and log one
 compute), `just db` (what's in the database), `just label` (hand-label logged videos for the
-experiments), `just sim` (what the text representations find similar).
+experiments), `just sim` (what the text representations find similar; `--eval` scores them against your
+labels).
 
 ## Scraping disclaimer
 
