@@ -21,7 +21,7 @@ import secrets
 import sqlite3
 import sys
 from collections.abc import Iterable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +29,7 @@ from sidekick.config import Paths, get_paths
 from sidekick.models import Candidate, VideoMeta
 from sidekick.profile.parser import Profile, normalize
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 TABLES = (
     "videos",
@@ -168,7 +168,15 @@ CREATE TABLE profile_versions (
 );
 """
 
-_MIGRATIONS = {1: _SCHEMA_V1}
+# v2 (M2c): SponsorBlock results cached on the video row.
+_SCHEMA_V2 = """
+ALTER TABLE videos ADD COLUMN sponsor_frac REAL;
+ALTER TABLE videos ADD COLUMN selfpromo_frac REAL;
+ALTER TABLE videos ADD COLUMN sponsor_segments INTEGER;
+ALTER TABLE videos ADD COLUMN sponsor_checked_at TEXT;
+"""
+
+_MIGRATIONS = {1: _SCHEMA_V1, 2: _SCHEMA_V2}
 
 
 def now_iso() -> str:
@@ -304,6 +312,50 @@ class Store:
     def set_language(self, video_id: str, lang: str, conf: float | None) -> None:
         self.conn.execute(
             "UPDATE videos SET lang = ?, lang_conf = ? WHERE video_id = ?", (lang, conf, video_id)
+        )
+
+    def set_sponsor(
+        self,
+        video_id: str,
+        *,
+        sponsor_frac: float,
+        selfpromo_frac: float,
+        n_segments: int,
+        ts: str | None = None,
+    ) -> None:
+        self.conn.execute(
+            """UPDATE videos SET sponsor_frac = ?, selfpromo_frac = ?, sponsor_segments = ?,
+                   sponsor_checked_at = ? WHERE video_id = ?""",
+            (sponsor_frac, selfpromo_frac, n_segments, ts or now_iso(), video_id),
+        )
+
+    def get_meta(self, video_id: str, *, max_age: timedelta | None = None) -> VideoMeta | None:
+        """The enriched metadata for a video, if it was enriched (within ``max_age``)."""
+        v = self.get_video(video_id)
+        if not v or not v["last_enriched"]:
+            return None
+        if max_age is not None:
+            age = datetime.now(UTC) - datetime.fromisoformat(v["last_enriched"])
+            if age > max_age:
+                return None
+        views = self.conn.execute(
+            "SELECT views FROM video_snapshots WHERE video_id = ? AND source = 'watch' "
+            "ORDER BY ts DESC LIMIT 1",
+            (video_id,),
+        ).fetchone()
+        return VideoMeta(
+            video_id=video_id,
+            title=v["title"] or "",
+            channel=v["channel"] or "",
+            channel_id=v["channel_id"] or "",
+            description=v["description"] or "",
+            keywords=json.loads(v["keywords"] or "[]"),
+            duration_s=v["duration_s"],
+            views=views[0] if views else None,
+            publish_date=v["published_at"] or "",
+            category=v["category"] or "",
+            is_live=bool(v["is_live"]),
+            is_upcoming=bool(v["is_upcoming"]),
         )
 
     def add_snapshot(

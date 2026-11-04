@@ -24,7 +24,7 @@ Quick start (inside the Linux environment): `just sync && just test && just dev`
 `http://localhost:8000/health` in Chrome.
 
 Useful commands: `just models` (one-time ~1 MB language-ID download), `just profile` (how your
-`profile.md` is read), `just fetch <video-id>` (fetch, run the Stage A filters and log one
+`profile.md` is read), `just fetch <video-id>` (fetch, run Stage A + B and log one
 compute), `just db` (what's in the database).
 
 ## Scraping disclaimer
