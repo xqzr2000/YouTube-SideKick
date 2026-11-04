@@ -34,7 +34,10 @@ DEFAULT_TEXT = {"clickbait": 0.80, "promo": 0.67}  # used until `just tune --wri
 # fire on many unlabeled videos. The floors keep a small label set from doing that.
 # Clickbait 0.65 (was 0.50): on 2026-11-04 real titles the bait ones scored 0.72-1.00, and 0.50
 # would have dropped "Bayesian vs. Frequentist Statistics ... MADE EASY!!!" (0.60).
-FLOORS = {"dont_show": 0.15, "downvoted": 0.25, "clickbait": 0.65, "promo": 0.34}
+# Don't-show 0.20 (was 0.15): on 2026-11-04, with the line "political commentary and election
+# news", political/news videos scored 0.29-0.40 in both a lecture and a comedy context, while no
+# non-political video scored above 0.16. At 0.15 a stand-up clip was dropped on the floor alone.
+FLOORS = {"dont_show": 0.20, "downvoted": 0.25, "clickbait": 0.65, "promo": 0.34}
 
 
 @dataclass
