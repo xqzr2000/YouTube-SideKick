@@ -42,6 +42,11 @@ models:
 db:
     uv run python -m sidekick.store.db
 
+# Hand-label logged videos for E1/E2 (e.g. `just label`, `just label --n 20`, `just label --stats`)
+[positional-arguments]
+label *args:
+    uv run python -m sidekick.label "$@"
+
 # Save raw YouTube pages to ~/.sidekick/fixtures (e.g. `just record ID1 ID2 --search "query"`)
 [positional-arguments]
 record *args:
