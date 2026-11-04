@@ -51,7 +51,8 @@ def test_fetch_cli_logs_compute_to_db(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(cli, "Fetcher", fake_fetcher)
     assert cli.main(["AAAAAAAAAAA", "--search", "bayes lecture"]) == 0
-    assert "logged as compute" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "logged as compute" in out and "Stage A: kept" in out and "run `just models`" in out
     with Store(tmp_path / "sidekick.db") as s:
         (c,) = s.recent_computes()
         assert c["status"] == "ok" and c["trigger"] == "cli" and c["pages_fetched"] == 2
@@ -63,6 +64,9 @@ def test_fetch_cli_logs_compute_to_db(tmp_path, monkeypatch, capsys):
         (q,) = s.conn.execute("SELECT query_text, method FROM queries").fetchall()
         assert tuple(q) == ("bayes lecture", "manual")
         assert s.get_video("AAAAAAAAAAA")["last_enriched"] is not None
+        n_unique = s.conn.execute("SELECT COUNT(DISTINCT video_id) FROM candidates").fetchone()[0]
+        stages = s.conn.execute("SELECT stage, COUNT(*) FROM decisions GROUP BY stage").fetchall()
+        assert [tuple(r) for r in stages] == [("A", n_unique)]
 
     assert cli.main(["AAAAAAAAAAA", "--no-db"]) == 0
     with Store(tmp_path / "sidekick.db") as s:

@@ -34,6 +34,10 @@ init:
 profile:
     uv run python -m sidekick.profile
 
+# Download the fastText language-ID model (lid.176.ftz, ~1 MB) into ~/.sidekick/models
+models:
+    uv run python -m sidekick.features.lang --download
+
 # Show row counts and the latest computes in ~/.sidekick/sidekick.db
 db:
     uv run python -m sidekick.store.db
