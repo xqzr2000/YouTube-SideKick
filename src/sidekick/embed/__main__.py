@@ -153,6 +153,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--k", type=int, default=8, help="how many neighbours (default 8)")
     ap.add_argument("--download", action="store_true", help="download the e5 model and exit")
     ap.add_argument("--eval", action="store_true", help="score representations against your labels")
+    ap.add_argument("--md", action="store_true", help="with --eval: print a Markdown table")
     args = ap.parse_args(argv)
     if args.download:
         return download()
@@ -171,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"unknown or unavailable representation {args.rep!r}", file=sys.stderr)
                 return 1
         if args.eval:
-            from sidekick.embed.evaluate import evaluate, report
+            from sidekick.embed.evaluate import evaluate, markdown, report
 
             e5 = next((r for r in reps if r.name == e5mod.NAME), None)
             if e5 is not None and not args.rep:
@@ -180,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
                 if r.cacheable:
                     warm_e5(store, [r])
             res = evaluate(store, reps, profile.interests, [d.text for d in profile.dont_show])
-            print("\n".join(report(res)))
+            print("\n".join(markdown(res) if args.md else report(res)))
             return 0
         warm_e5(store, reps)
         if args.query:
