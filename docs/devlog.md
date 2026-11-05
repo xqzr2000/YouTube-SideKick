@@ -32,6 +32,7 @@ evidence from real pages comes from the owner's runs.
 | #19 | M3 | E1 and E2 reports, this entry |
 | #20 | M3 | Language rule no longer applies to Music-category videos (language kept as a feature) |
 | #21 | M3 | …and not in a music context either (current video is Music), for concerts filed under Entertainment |
+| #22 | M4 | Topic anchor (lead story, entities, keyphrases), spaCy `en_core_web_sm`, `just topic` |
 
 ---
 
@@ -245,4 +246,41 @@ evidence from real pages comes from the owner's runs.
   context-relative score (E1b).
 - *Timing:* cold computes without backfill took 42–82 s; warm ones about 20 s, of which the gate
   and Stage C take 2.5–6 s.
+
+## Session 6 — 2026-11-05: the topic anchor (M4 starts)
+
+**Done**
+- **Topic anchor** (`sidekick.topic`, `just topic`): for any video, what it's about. Channel
+  boilerplate (description lines repeated across a channel's videos) and the channel's title
+  template ("… at Six for Tuesday") are removed first. The lead is the title plus the first
+  description sentence, or, for a full newscast whose title says nothing specific, its first
+  real chapter. Entities and keyphrases come from the lead only; tokens are weighted by IDF over
+  our own videos. `just topic <id>` shows how every logged candidate matches the anchor next to
+  its label and the current filter decision. Nothing filters on it yet.
+- **spaCy `en_core_web_sm`** for entities and part-of-speech keyphrases: a ~13 MB statistical
+  pipeline (no text generation), downloaded once by `just models` from spaCy's GitHub releases,
+  checked against a pinned sha256 and loaded from the models folder. Without it a heuristic
+  tagger takes over.
+
+**Decisions and reasons**
+- *Replace the context-relative Don't-show idea (E1b) with a topic anchor* (owner's call). While
+  watching news the owner wants that story, not "news" in general and not "no politics". A
+  positive rule tied to the current video expresses that; a context-free Don't-show line can't.
+- *In a news context, the topic is the lead story only*, and *pundit/commentary videos are not
+  shown there* (owner's call). The pundit rule comes after "same story?" labels exist.
+- *A topic anchor for every compute*, strict in a news context and lighter elsewhere (owner's
+  call). The lecture labels point the same way: "good" meant same series or tight topic, "meh"
+  meant drift. Title-template words are kept as `series` for that.
+- *Part-of-speech runs, not spaCy noun chunks:* headlines drop their verbs ("Port strike talks
+  collapse as union rejects offer"), and the parser then tags "collapse" as the head noun, so
+  noun chunks miss "port strike talks". Runs of adjectives and nouns don't.
+- *Interpretable parts, no threshold yet:* token overlap, entity overlap, series overlap,
+  publish-date gap and e5 similarity of the topic texts are shown separately; which ones
+  separate "same story" from the rest is for labels to decide.
+
+**Dead ends and fixes**
+- *Title-Case headlines confuse the entity recognizer* ("Kimmel Breaks Down" comes out as a
+  person), so entities are one signal beside keyphrases, matched at the token level.
+- *Bare month names* ("November" in a newscast title) leaked into keyphrases; month and weekday
+  names are now filler.
 

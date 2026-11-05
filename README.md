@@ -13,8 +13,9 @@ On the surface, SideKick is a browser extension. At its core, it's a data scienc
 ## Status
 
 Early development (M1 done: parsers, polite fetcher, NB01; M2 done: profile, SQLite store,
-Stage A/B filters, enrichment, NB02; M3 in progress: hand labels, TF-IDF / LSA / e5 text
-representations, interest gate, Stage C soft filters, NB03). See `docs/` for setup:
+Stage A/B filters, enrichment, NB02; M3 done: hand labels, TF-IDF / LSA / e5 text
+representations, interest gate, Stage C soft filters, NB03, E1/E2; M4 started: the topic
+anchor). See `docs/` for setup:
 
 - [Windows 11 + Chrome + WSL2](docs/setup-windows-wsl2.md) (primary dev box)
 - [ChromeOS + Chrome + Crostini](docs/setup-chromeos.md)
@@ -25,11 +26,12 @@ Quick start (inside the Linux environment): `just sync && just test && just dev`
 `http://localhost:8000/health` in Chrome.
 
 Useful commands: `just models` (one-time downloads: ~1 MB language ID, ~120 MB
-multilingual-e5-small), `just profile` (how your
+multilingual-e5-small, ~13 MB spaCy `en_core_web_sm`), `just profile` (how your
 `profile.md` is read), `just fetch <video-id>` (fetch, run Stage A + B and log one
 compute), `just db` (what's in the database), `just label` (hand-label logged videos for the
 experiments), `just sim` (what the text representations find similar; `--eval` scores them against your
-labels), `just tune` (set the interest-gate and Stage C thresholds from your labels).
+labels), `just tune` (set the interest-gate and Stage C thresholds from your labels),
+`just topic <video-id>` (the topic anchor of a video and how its candidates match it).
 
 ## Scraping disclaimer
 
