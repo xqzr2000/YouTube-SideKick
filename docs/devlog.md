@@ -33,6 +33,7 @@ evidence from real pages comes from the owner's runs.
 | #20 | M3 | Language rule no longer applies to Music-category videos (language kept as a feature) |
 | #21 | M3 | …and not in a music context either (current video is Music), for concerts filed under Entertainment |
 | #22 | M4 | Topic anchor (lead story, entities, keyphrases), spaCy `en_core_web_sm`, `just topic` |
+| #23 | M4 | Topic anchor fixes from the first real run: show-name segments, channel tags, series outside news, places, `just topic --text` |
 
 ---
 
@@ -283,4 +284,30 @@ evidence from real pages comes from the owner's runs.
   person), so entities are one signal beside keyphrases, matched at the token level.
 - *Bare month names* ("November" in a newscast title) leaked into keyphrases; month and weekday
   names are now filler.
+
+**Later the same session: first real run (#22 merged)**
+- spaCy downloaded and loaded on the owner's machine; e5 topic vectors took 0.6–1.3 s for 21–52
+  videos.
+- *The news lead came out right,* but **none of the news seed's 20 up-next videos was about the
+  same story** (other newscasts, U.S. midterm coverage, true crime). YouTube's up-next doesn't
+  surface the same story, so a strict news topic lock only works together with search backfill
+  on the topic's query. e5 similarity of topic texts didn't separate anything either
+  (0.76–0.87 for every candidate).
+- *The lecture anchor works:* for the MIT lecture the next lecture of the course ranked first
+  (e5 0.98) and labeled-good videos sat near the top.
+- **PR #23** fixes what the real titles exposed:
+  - *Repeated channel tags* ("BC news") gave every CTV newscast a 0.35 match with no shared
+    story. Tags on 2+ of a channel's videos no longer count in news.
+  - *The lecture lost its topic:* words common to the course's titles were treated as a
+    template and removed, leaving "ii". Outside news, the series is part of the topic (0.3×),
+    and the title is never emptied.
+  - *Show names inside titles* ("… | CTV News Vancouver at Six for November 3", "CBC Vancouver
+    News at 6, Nov. 04: …", "ABC World News Tonight … Full Broadcast - Nov. 4") are recognized
+    as segments and dropped in news; a title that only names the show has no topic.
+  - *"Prof." ended a sentence;* abbreviations and initials no longer do.
+  - *The search query lost the place,* because "Vancouver" is in the show name. spaCy reads
+    "CTV News Vancouver" as one organization, so spans of show names are probed as
+    "in <span>"; the query is now "tunnel turnaround Vancouver".
+  - `just topic <id> --text` shows how each title segment, description line and tag was read,
+    to check the cleaning on real pages.
 

@@ -5,6 +5,7 @@ Examples::
     just topic                  # the topic of every current video (seed) in the database
     just topic 5eW3gNkNsA8      # one video's topic + its candidates ranked by topic match
     just topic 5eW3gNkNsA8 --k 30 --no-e5
+    just topic 5eW3gNkNsA8 --text   # how its title, description lines and tags were read
     just topic --download       # fetch spaCy en_core_web_sm (part of `just models`)
 
 Nothing here filters or ranks for real; it prints what the extractor found and how each
@@ -25,7 +26,7 @@ from sidekick.embed import _get_cached, _put_cached
 from sidekick.embed import e5 as e5mod
 from sidekick.embed.text import text_hash
 from sidekick.store.db import Store
-from sidekick.topic import Topic, TopicContext, extract, match
+from sidekick.topic import Topic, TopicContext, explain_text, extract, match
 from sidekick.topic import nlp as nlpmod
 
 E5_TOPIC = "e5-topic"  # embeddings.model for topic texts (cached by text hash)
@@ -99,7 +100,7 @@ def print_topic(t: Topic, out=print) -> None:
     out(f"  lead ({s['lead_source']}): {s['lead'][:160]}")
     out(f"  entities:   {', '.join(s['entities']) or '-'}")
     out(f"  keyphrases: {', '.join(s['keyphrases']) or '-'}")
-    out(f"  series:     {', '.join(s['series']) or '-'}")
+    out(f"  series:     {', '.join(s['series']) or '-'}    places: {', '.join(s['places']) or '-'}")
     out(f"  news:       {s['news']}    query: {s['query']!r}")
 
 
@@ -107,13 +108,19 @@ def _fmt(x) -> str:
     return "   -" if x is None else f"{x:4.2f}"
 
 
-def show_one(store: Store, ctx: TopicContext, vid: str, *, k: int, e5, out=print) -> int:
+def show_one(
+    store: Store, ctx: TopicContext, vid: str, *, k: int, e5, text: bool = False, out=print
+) -> int:
     anchor = extract(ctx, vid)
     if anchor is None:
         print(f"{vid} isn't in the database; run `just fetch {vid}` first", file=sys.stderr)
         return 1
     out(f"\n{anchor.channel} | {anchor.title}")
     print_topic(anchor, out)
+    if text:
+        out("\n  how the text was read (show/boiler/pattern/chapter/channel = not used as topic):")
+        for mark, line in explain_text(ctx, vid):
+            out(f"    {mark:12} {line}")
     ids = candidates(store, vid)
     if not ids:
         out("\n  (no candidates logged for this video)")
@@ -152,6 +159,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("ids", nargs="*", help="video ids (default: every seed, topic only)")
     ap.add_argument("--k", type=int, default=20, help="candidates to show per video")
     ap.add_argument("--no-e5", action="store_true", help="skip e5 topic similarity")
+    ap.add_argument("--text", action="store_true", help="show how title/description/tags were read")
     ap.add_argument("--download", action="store_true", help="download spaCy en_core_web_sm")
     args = ap.parse_args(argv)
     paths = ensure_home()
@@ -185,7 +193,7 @@ def main(argv: list[str] | None = None) -> int:
         rc = 0
         for vid in args.ids:
             vid = _video_id(vid)
-            rc |= show_one(store, ctx, vid, k=args.k, e5=e5)
+            rc |= show_one(store, ctx, vid, k=args.k, e5=e5, text=args.text)
         return rc
 
 
