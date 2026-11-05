@@ -34,10 +34,12 @@ init:
 profile:
     uv run python -m sidekick.profile
 
-# Download the models into ~/.sidekick/models: fastText language ID (~1 MB) + multilingual-e5-small (~120 MB)
+# Download the models into ~/.sidekick/models: fastText language ID (~1 MB),
+# multilingual-e5-small (~120 MB) and spaCy en_core_web_sm (~13 MB, topic entities)
 models:
     uv run python -m sidekick.features.lang --download
     uv run python -m sidekick.embed --download
+    uv run python -m sidekick.topic --download
 
 # Show what the text representations find similar (e.g. `just sim`, `just sim <id>`, `just sim "text"`)
 [positional-arguments]
@@ -47,6 +49,12 @@ sim *args:
 # Show row counts and the latest computes in ~/.sidekick/sidekick.db
 db:
     uv run python -m sidekick.store.db
+
+# Show the topic anchor of a video and how its candidates match it
+# (e.g. `just topic`, `just topic <id or watch URL>`, `just topic <id> --k 30 --no-e5`)
+[positional-arguments]
+topic *args:
+    uv run python -m sidekick.topic "$@"
 
 # Hand-label logged videos for E1/E2 (e.g. `just label`, `just label --n 20`, `just label --stats`)
 [positional-arguments]
