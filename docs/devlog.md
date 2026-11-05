@@ -22,6 +22,14 @@ evidence from real pages comes from the owner's runs.
 | #9 | M2 | Stage A hard filters, fastText language ID, `just models` |
 | #10 | M2 | Stage B enrichment (24 h cache), SponsorBlock, schema v2 |
 | #11 | M2 | NB02 (what gets filtered and why), `load_decisions` |
+| #12 | M3 | `just label` hand labels (current-video and candidate questions), schema v3 |
+| #13 | M3 | TF-IDF / LSA / multilingual-e5-small representations, embeddings cache (schema v4), `just sim` |
+| #14 | M3 | `just sim --eval`: representations scored against labels; centering; e5 query/passage variant |
+| #15 | M3 | Interest gate + Stage C soft filters, `just tune` (precision-first), language drops moved to Stage B, schema v5 |
+| #16 | M3 | `just tune` clickbait floor 0.50 → 0.65 |
+| #17 | M3 | `just tune` Don't-show floor 0.15 → 0.20 |
+| #18 | M3 | NB03, bootstrap intervals, `just sim --eval --md` |
+| #19 | M3 | E1 and E2 reports, this entry |
 
 ---
 
@@ -181,4 +189,58 @@ evidence from real pages comes from the owner's runs.
   highest seen was 12%.
 - *One borderline drop worth a look:* a two-hour lecture by a well-known statistics educator was
   removed by `max_duration: 90m`, the kind of false removal the evaluation will track.
+
+## Session 5 — 2026-11-04/05: M3 labels, text representations, interest gate, Stage C, E1/E2
+
+**Done**
+- **Hand labels** (`just label`): two questions, with filter decisions hidden so the labels
+  can't echo them. For each current video: *does it match one of your Interests?* For each
+  candidate: *while watching this, would you want that shown next?* By the end there were
+  95 candidate labels (42 good / 31 meh / 22 bad) and 7 current videos (3 on-interest, 4 not).
+- **Text representations:** TF-IDF and LSA fitted on our own videos, and `multilingual-e5-small`
+  (int8 ONNX through fastembed, no torch) with cached vectors that are recomputed when a
+  video's text changes.
+- **Interest gate and Stage C soft filters** in `just fetch`: Don't-show-me similarity,
+  similarity to downvoted videos, a clickbait score and a promo score. Every score is logged
+  whether it drops the video or not. `just tune` sets the thresholds from the labels.
+- **NB03 and the first two experiment reports:** [E1](../reports/E1-representations.md) (which
+  representation) and [E2](../reports/E2-interest-gate.md) (the gate).
+
+**Decisions and reasons**
+- *Measure before choosing.* Raw e5 cosines sit at 0.74–0.89 for almost any pair, so instead of
+  hand-picking cut-offs, `just sim --eval` scores each representation against the labels with
+  threshold-free AUCs (later with bootstrap intervals). That showed **mean-centering** triples
+  the gate's margin, which is why it's used for every comparison with a profile line.
+- *Precision-first soft filters with floors* (owner's call): each threshold sits just above the
+  highest score of any video labeled good, so no good video is dropped. A floor keeps a small
+  label set from pushing a threshold toward zero, and `just tune` also reports how many
+  *unlabeled* videos each threshold would drop.
+- *Language drops only in Stage B* (owner's call): on the title alone, a lecture titled with a
+  course code was confidently classed as German.
+- *Hand-weighted clickbait and promo scores for now:* about ten bad labels can't train a
+  classifier. Their parts are logged so M6 can learn the weights.
+
+**Dead ends and fixes**
+- *The e5 model can't be downloaded in Claude's environment* (Hugging Face is blocked). A 28 KB
+  stand-in model with the same shape exercises the whole fastembed path in CI. The real model
+  ran first on the owner's machine (124 MB download in 7 s, ~130–170 ms per video on CPU).
+- *The first seed answers were all "yes"*, including a comedy clip, because the question didn't
+  show the Interests lines. The prompt now lists them, and `just label --seeds` re-asks.
+- *A Don't-show-me line dropped three non-political stand-up clips.* The line mixed a topic and
+  a genre ("political late-night clips"), and the embedding matched the genre. Rewording it to a
+  single concept ("political commentary and election news") fixed it without code changes; the
+  clickbait and Don't-show floors were then raised from evidence (#16, #17).
+
+**Findings** (details in the reports)
+- *The interest gate works on clear cases:* centered e5 separates 3 on-interest from 4
+  off-interest current videos with a 0.19–0.20 margin; TF-IDF and LSA can't (≈ 0 for every
+  seed).
+- *Similarity to the current video* ranks good above the rest at AUC ≈ 0.75–0.78 for every
+  representation. Series share words, so TF-IDF keeps up with e5.
+- *Don't-show-me is context-dependent.* While watching local news, the owner labeled two news
+  reports as good even though they score among the highest on the political line. A
+  context-free line can't express "not unless I'm already watching this". Next experiment: a
+  context-relative score (E1b).
+- *Timing:* cold computes without backfill took 42–82 s; warm ones about 20 s, of which the gate
+  and Stage C take 2.5–6 s.
 
