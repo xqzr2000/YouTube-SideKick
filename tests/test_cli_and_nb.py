@@ -130,3 +130,23 @@ def test_nb02_runs_on_db_with_stage_b(tmp_path, monkeypatch, capsys):
     test_fetch_cli_logs_compute_to_db(tmp_path, monkeypatch, capsys)  # builds a real-shaped db
     defs = _run_nb02()
     assert set(defs["df"].stage) == {"A", "B", "C"} and len(defs["computes"]) == 1
+
+
+def _run_nb03():
+    spec = importlib.util.spec_from_file_location(
+        "nb03", ROOT / "notebooks" / "03_representations.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    _, defs = mod.app.run()
+    return defs
+
+
+def test_nb03_runs_on_sample(tmp_path, monkeypatch):
+    pytest.importorskip("marimo")
+    monkeypatch.setenv(ENV_VAR, str(tmp_path))  # no database -> sample with synthetic labels
+    defs = _run_nb03()
+    reps = {(r.rep, r.variant) for r in defs["results"]}
+    assert reps == {("tfidf", "raw"), ("tfidf", "centered"), ("lsa", "raw"), ("lsa", "centered")}
+    assert all(r.n["good"] > 0 and r.n["bad"] > 0 for r in defs["results"])
+    assert len(defs["gate_rows"]) == 16  # 4 seeds x 4 representation variants

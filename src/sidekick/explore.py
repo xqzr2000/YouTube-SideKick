@@ -1,6 +1,7 @@
 """Load data for the exploration notebooks from whatever is available.
 
-``load_candidates`` (NB01) and ``load_decisions`` (NB02, see below).
+``load_candidates`` (NB01), ``load_decisions`` (NB02) and ``load_representations`` (NB03),
+see each function.
 
 Candidate sources (NB01), in ``auto`` order:
 
@@ -216,3 +217,127 @@ def load_decisions(
         with _sample_store(sample_path, profile) as s:
             decisions, computes = _decision_rows(s)
     return {"source": source, "profile": profile, "decisions": decisions, "computes": computes}
+
+
+# -- NB03: representations vs labels --------------------------------------------------------
+
+REPRESENTATION_SOURCES = ("auto", "db", "sample")
+
+# Topic phrases of the synthetic sample (scripts/make_sample.py), used to give the sample
+# synthetic labels: same topic as the current video = good, other topic = bad.
+SAMPLE_TOPICS = {
+    "bayes": ("Bayesian inference", "Priors explained", "MCMC by hand", "Credible intervals"),
+    "rl": ("Q-learning", "Policy gradients", "Double DQN", "Reward shaping"),
+    "chem": ("PCA for spectra", "PLS regression", "GC-MS peak picking", "Baseline correction"),
+    "comedy": ("Stand-up set", "Crowd work", "Road stories", "Family bits"),
+}
+SAMPLE_PROFILE = """## Interests
+- reinforcement learning
+- Bayesian statistics
+- chemometrics
+
+## Don't show me
+- stand-up comedy and crowd work
+"""
+
+
+def _sample_topic(title: str | None) -> str | None:
+    for topic, phrases in SAMPLE_TOPICS.items():
+        if any((title or "").startswith(p) for p in phrases):
+            return topic
+    return None
+
+
+def _label_sample(store: Store) -> None:
+    """Synthetic labels for the sample: comedy seeds are off-interest, the others on;
+    a candidate is good when it shares the current video's topic, else bad."""
+    seeds = [
+        r[0]
+        for r in store.conn.execute(
+            "SELECT DISTINCT current_video_id FROM computes WHERE current_video_id IS NOT NULL"
+        )
+    ]
+    for seed in seeds:
+        topic = _sample_topic((store.get_video(seed) or {}).get("title"))
+        if topic is None:
+            continue
+        store.add_label(seed, "bad" if topic == "comedy" else "good", kind="seed", session="sample")
+        rows = store.conn.execute(
+            """SELECT k.video_id, MAX(k.compute_id) FROM candidates k
+               JOIN computes c ON c.compute_id = k.compute_id
+               WHERE c.current_video_id = ? AND k.video_id != ? GROUP BY k.video_id""",
+            (seed, seed),
+        ).fetchall()
+        for vid, cid in rows:
+            t = _sample_topic((store.get_video(vid) or {}).get("title"))
+            if t is not None:
+                label = "good" if t == topic else "bad"
+                store.add_label(vid, label, compute_id=cid, session="sample")
+
+
+def load_representations(
+    source: str = "auto",
+    *,
+    paths: Paths | None = None,
+    sample_path: Path = SAMPLE_PATH,
+    e5=None,
+) -> dict[str, Any]:
+    """Every representation scored against the labels (``embed.evaluate``), for NB03.
+
+    Returns ``{"source", "profile", "results": [Result...], "thresholds", "n_labels"}``.
+    ``db`` uses ``~/.sidekick/sidekick.db`` and its hand labels, with e5 (both prefix variants)
+    if the model is downloaded. ``sample`` replays the synthetic sample with synthetic labels
+    and a sample profile, TF-IDF and LSA only (no model download, so CI can run it). ``auto``
+    picks ``db`` when the database has candidate labels.
+    """
+    from sidekick.embed import available
+    from sidekick.embed import e5 as e5mod
+    from sidekick.embed.evaluate import evaluate
+    from sidekick.filters import thresholds as thmod
+
+    if source not in REPRESENTATION_SOURCES:
+        raise ValueError(f"source must be one of {REPRESENTATION_SOURCES}")
+    paths = paths or get_paths()
+    if source == "auto":
+        source = "sample"
+        if paths.db.exists():
+            with Store(paths.db) as s:
+                q = "SELECT 1 FROM labels WHERE kind = 'candidate' LIMIT 1"
+                if s.conn.execute(q).fetchone():
+                    source = "db"
+    if source == "db":
+        profile = load_profile(paths)
+        th = thmod.load(paths)
+        store = Store(paths.db)
+        lines = profile.interests + [d.text for d in profile.dont_show]
+        reps = available(store, lines, paths=paths, e5=e5)
+        e5_rep = next((r for r in reps if r.name == e5mod.NAME), None)
+        if e5_rep is not None:
+            reps.append(e5_rep.with_passages())
+    else:
+        profile = parse_profile(SAMPLE_PROFILE)
+        th = thmod.Thresholds()
+        store = _sample_store(sample_path, profile)
+        _label_sample(store)
+        lines = profile.interests + [d.text for d in profile.dont_show]
+        reps = available(store, lines, e5=e5) if e5 is not None else _corpus_reps(store, lines)
+    with store:
+        results = evaluate(store, reps, profile.interests, [d.text for d in profile.dont_show])
+        n_labels = store.conn.execute("SELECT COUNT(*) FROM labels").fetchone()[0]
+        titles = {r[0]: r[1] for r in store.conn.execute("SELECT video_id, title FROM videos")}
+    return {
+        "source": source,
+        "profile": profile,
+        "results": results,
+        "thresholds": th,
+        "n_labels": n_labels,
+        "titles": titles,
+    }
+
+
+def _corpus_reps(store: Store, lines: list[str]) -> list:
+    from sidekick.embed import corpus
+    from sidekick.embed.tfidf import LsaRep, TfidfRep
+
+    docs = corpus(store, lines)
+    return [TfidfRep().fit(docs), LsaRep().fit(docs)]

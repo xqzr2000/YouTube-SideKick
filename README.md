@@ -13,7 +13,8 @@ On the surface, SideKick is a browser extension. At its core, it's a data scienc
 ## Status
 
 Early development (M1 done: parsers, polite fetcher, NB01; M2 done: profile, SQLite store,
-Stage A/B filters, enrichment, NB02). See `docs/` for setup:
+Stage A/B filters, enrichment, NB02; M3 in progress: hand labels, TF-IDF / LSA / e5 text
+representations, interest gate, Stage C soft filters, NB03). See `docs/` for setup:
 
 - [Windows 11 + Chrome + WSL2](docs/setup-windows-wsl2.md) (primary dev box)
 - [ChromeOS + Chrome + Crostini](docs/setup-chromeos.md)
