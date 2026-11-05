@@ -30,6 +30,7 @@ evidence from real pages comes from the owner's runs.
 | #17 | M3 | `just tune` Don't-show floor 0.15 → 0.20 |
 | #18 | M3 | NB03, bootstrap intervals, `just sim --eval --md` |
 | #19 | M3 | E1 and E2 reports, this entry |
+| #20 | M3 | Language rule no longer applies to Music-category videos (language kept as a feature) |
 
 ---
 
