@@ -254,6 +254,7 @@ def main(argv: list[str] | None = None) -> int:
                         sponsorblock=sb,
                         detector=detector,
                         cap=args.enrich_cap,
+                        current_category=m.category if m else None,
                     )
                 if store and cid:
                     log_decisions(store, cid, b_decisions, stage="B")

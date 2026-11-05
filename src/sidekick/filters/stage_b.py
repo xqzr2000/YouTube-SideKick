@@ -11,9 +11,11 @@ For each survivor (up to ``ENRICH_CAP``, in first-seen order, so up-next comes f
 
 Stage B drops a video only for hard facts the exact data reveals: ``lang:<code>`` (confident,
 not in your languages), ``live`` / ``upcoming``, and ``duration<min`` / ``duration>max`` on the
-exact duration. The language rule doesn't apply to videos in ``LANG_EXEMPT_CATEGORIES``
-(Music): a German or French concert is still worth watching, so for those the language guess
-is only a feature, marked ``lang_exempt``. Everything else (sponsor share, age, views) is a
+exact duration. The language rule doesn't apply to music: a German or French concert is still
+worth watching. It is skipped when the candidate's category is in ``LANG_EXEMPT_CATEGORIES``
+(Music), and also when the *current* video's category is, because uploaders often file concerts
+under Entertainment. For those the language guess is only a feature, marked ``lang_exempt``
+(``"category"`` or ``"context"``). Everything else (sponsor share, age, views) is a
 *feature* for Stage C and ranking, logged with the decision.
 
 Videos past the cap, or whose page failed, are kept and marked ``enriched: false``.
@@ -123,10 +125,16 @@ def run_stage_b(
     cap: int = ENRICH_CAP,
     ttl: timedelta = ENRICH_TTL,
     lang_min_conf: float = LANG_MIN_CONF,
+    current_category: str | None = None,
 ) -> tuple[list[Decision], EnrichStats]:
-    """Enrich survivors and decide. ``BlockedError`` propagates: the compute stops as blocked."""
+    """Enrich survivors and decide. ``BlockedError`` propagates: the compute stops as blocked.
+
+    ``current_category`` is the current video's YouTube category; a music context switches the
+    language rule off for every candidate.
+    """
     rules = profile.rules
     allowed = set(rules.languages)
+    music_context = current_category in LANG_EXEMPT_CATEGORIES
     stats = EnrichStats()
     decisions: list[Decision] = []
     capped = False
@@ -193,7 +201,9 @@ def run_stage_b(
                     store.set_language(meta.video_id, guess.lang, feats["lang_conf"])
                 if allowed and guess.lang not in allowed and guess.conf >= lang_min_conf:
                     if meta.category in LANG_EXEMPT_CATEGORIES:
-                        feats["lang_exempt"] = True
+                        feats["lang_exempt"] = "category"
+                    elif music_context:
+                        feats["lang_exempt"] = "context"
                     else:
                         reasons.append(f"lang:{guess.lang}")
         decisions.append(Decision(c, kept=not reasons, reasons=reasons, features=feats))
