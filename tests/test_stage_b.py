@@ -306,3 +306,28 @@ def test_get_meta_respects_max_age(store):
     assert store.get_meta("EN000000001").views == 1000
     assert store.get_meta("EN000000001", max_age=timedelta(days=1)) is None
     assert store.get_meta("NEVERSEEN01") is None
+
+
+def test_language_rule_skips_music(store):
+    metas = {
+        "JAZZDE00001": meta(
+            "JAZZDE00001", description="Eine deutsche Beschreibung", category="Music"
+        ),
+        "TALKDE00001": meta("TALKDE00001", description="Eine deutsche Beschreibung"),
+        "JAZZEN00001": meta("JAZZEN00001", category="Music"),
+    }
+    det = FakeDetector({"deutsche": LangGuess("de", 0.99)})
+    decisions, _ = run_stage_b(
+        cands(*metas), PROFILE, fetcher=FakeFetcher(metas), store=store, detector=det
+    )
+    d = {x.video_id: x for x in decisions}
+    assert d["JAZZDE00001"].kept and d["JAZZDE00001"].features["lang"] == "de"
+    assert d["JAZZDE00001"].features["lang_exempt"] is True
+    assert d["TALKDE00001"].reason == "lang:de"
+    assert d["JAZZEN00001"].kept and "lang_exempt" not in d["JAZZEN00001"].features
+    # other hard rules still apply to music
+    long_jazz = {"JAZZLONG001": meta("JAZZLONG001", category="Music", duration_s=8 * 3600)}
+    decisions, _ = run_stage_b(
+        cands(*long_jazz), PROFILE, fetcher=FakeFetcher(long_jazz), store=store, detector=det
+    )
+    assert decisions[0].reason == "duration>max"
