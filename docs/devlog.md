@@ -31,6 +31,7 @@ evidence from real pages comes from the owner's runs.
 | #18 | M3 | NB03, bootstrap intervals, `just sim --eval --md` |
 | #19 | M3 | E1 and E2 reports, this entry |
 | #20 | M3 | Language rule no longer applies to Music-category videos (language kept as a feature) |
+| #21 | M3 | …and not in a music context either (current video is Music), for concerts filed under Entertainment |
 
 ---
 

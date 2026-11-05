@@ -322,7 +322,7 @@ def test_language_rule_skips_music(store):
     )
     d = {x.video_id: x for x in decisions}
     assert d["JAZZDE00001"].kept and d["JAZZDE00001"].features["lang"] == "de"
-    assert d["JAZZDE00001"].features["lang_exempt"] is True
+    assert d["JAZZDE00001"].features["lang_exempt"] == "category"
     assert d["TALKDE00001"].reason == "lang:de"
     assert d["JAZZEN00001"].kept and "lang_exempt" not in d["JAZZEN00001"].features
     # other hard rules still apply to music
@@ -331,3 +331,26 @@ def test_language_rule_skips_music(store):
         cands(*long_jazz), PROFILE, fetcher=FakeFetcher(long_jazz), store=store, detector=det
     )
     assert decisions[0].reason == "duration>max"
+
+
+def test_language_rule_skips_everything_in_a_music_context(store):
+    # a concert filed under Entertainment, watched from a Music video
+    metas = {
+        "LIVEDE00001": meta(
+            "LIVEDE00001", description="Eine deutsche Beschreibung", category="Entertainment"
+        ),
+    }
+    det = FakeDetector({"deutsche": LangGuess("de", 0.99)})
+    decisions, _ = run_stage_b(
+        cands(*metas), PROFILE, fetcher=FakeFetcher(metas), detector=det, current_category="Music"
+    )
+    assert decisions[0].kept and decisions[0].features["lang_exempt"] == "context"
+    # same video from a non-music context is still dropped
+    decisions, _ = run_stage_b(
+        cands(*metas),
+        PROFILE,
+        fetcher=FakeFetcher(metas),
+        detector=det,
+        current_category="Education",
+    )
+    assert decisions[0].reason == "lang:de"
