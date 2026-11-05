@@ -9,7 +9,7 @@ from sidekick.config import ENV_VAR, Paths
 from sidekick.embed import e5 as e5mod
 from sidekick.models import Candidate, VideoMeta
 from sidekick.store.db import Store
-from sidekick.topic import TopicContext, extract, match, news_context, nlp
+from sidekick.topic import TopicContext, explain_text, extract, match, news_context, nlp
 from sidekick.topic import __main__ as cli
 from sidekick.topic import text as tx
 
@@ -292,3 +292,146 @@ def test_topic_vectors_cached(tmp_path, store, ctx):
     assert m1.shape[0] == 3 and n[0] == 3
     m2 = cli.topic_vectors(store, e5, topics)
     assert (m1 == m2).all()
+
+
+# -- regressions from the first real run (2026-11-05) -----------------------------------------
+
+CTV_TAGS = ["CTV News", "BC news", "Vancouver news", "local news"]
+REAL = [
+    VideoMeta(
+        "ctvseed0001",
+        "Will there be a tunnel turnaround? | Metro News Harbour City at Six for November 3, 2026",
+        "Metro News",
+        description="Watch Metro News Harbour City at Six." + BOIL,
+        keywords=[*CTV_TAGS, "tunnel"],
+        publish_date="2026-11-03",
+        category="News & Politics",
+    ),
+    VideoMeta(
+        "ctvother001",
+        "Picking up the pieces | Metro News Harbour City at Six for October 27, 2026",
+        "Metro News",
+        description="Watch Metro News Harbour City at Six." + BOIL,
+        keywords=CTV_TAGS,
+        publish_date="2026-10-27",
+        category="News & Politics",
+    ),
+    VideoMeta(
+        "ctvother002",
+        "Ex-officer pleads guilty | Metro News Harbour City at Six for October 28, 2026",
+        "Metro News",
+        description="Watch Metro News Harbour City at Six." + BOIL,
+        keywords=CTV_TAGS,
+        publish_date="2026-10-28",
+        category="News & Politics",
+    ),
+    *[
+        VideoMeta(
+            f"lect{n:07d}",
+            f"Lecture {n}: Foundations of Reinforcement Learning: Partially Observable RL {r}",
+            "Prof Lab",
+            description="Course page: https://example.edu/rl",
+            category="Education",
+        )
+        for n, r in ((21, "I"), (22, "II"), (23, "III"))
+    ],
+    VideoMeta(
+        "mitbayes017",
+        "17. Bayesian Statistics",
+        "Open Course",
+        description="In this lecture, Prof. Rigollet talked about Bayesian priors and posteriors.",
+        category="Education",
+    ),
+]
+
+
+@pytest.fixture
+def real_ctx(tmp_path):
+    s = Store(tmp_path / "r.db")
+    for v in REAL:
+        s.upsert_meta(v)
+    s.commit()
+    yield TopicContext(s, nlp.HeuristicTagger())
+    s.close()
+
+
+def test_news_title_drops_show_segment_and_channel_tags(real_ctx):
+    t = extract(real_ctx, "ctvseed0001")
+    assert t.lead_source == "title" and t.lead == "Will there be a tunnel turnaround?"
+    assert set(t.weights) == {"tunnel", "turnaround"}  # repeated channel tags don't count
+    other = extract(real_ctx, "ctvother001")
+    assert match(t, other)["tok"] == 0.0 and match(t, other)["series"] == 1.0
+
+
+def test_news_query_keeps_the_place(real_ctx, monkeypatch):
+    t = extract(real_ctx, "ctvseed0001")
+    t.places = ["Harbour City"]  # what spaCy's GPE finds in the show segment
+    assert t.query() == "tunnel turnaround Harbour City"
+
+
+def test_lecture_series_is_topic_outside_news(real_ctx):
+    t = extract(real_ctx, "lect0000022")
+    assert t.lead_source == "title" and not t.is_news
+    assert {"reinforcement", "learning", "observable"} <= set(t.weights)
+    sib = match(t, extract(real_ctx, "lect0000023"))
+    assert sib["tok"] > 0.5 and sib["series"] == 1.0
+
+
+def test_abbreviation_does_not_end_the_sentence(real_ctx):
+    t = extract(real_ctx, "mitbayes017")
+    assert t.lead.endswith("talked about Bayesian priors and posteriors.")
+    assert tx.first_sentence("Mr. J. Smith spoke. Then more.") == "Mr. J. Smith spoke."
+
+
+def test_title_segments_and_entity_strip():
+    assert tx.title_segments("A | B • C") == ["A", "B", "C"]
+    assert tx.strip_entity("Herb Ellis •") == "Herb Ellis"
+    assert tx.strip_entity("the Port of Vancouver") == "Port of Vancouver"
+
+
+def test_explain_text_marks(real_ctx):
+    marks = dict((line, mark) for mark, line in explain_text(real_ctx, "ctvseed0001"))
+    assert marks["Will there be a tunnel turnaround?"] == "title:keep"
+    assert marks["Metro News Harbour City at Six for November 3, 2026"] == "title:show"
+    assert marks["Watch Metro News Harbour City at Six."] in {"boiler", "pattern"}
+    assert marks["BC news"] == "tag:channel" and marks["tunnel"] == "tag:keep"
+
+
+def test_news_show_names_with_colon_dash_and_no_date(real_ctx):
+    assert tx.title_segments("CBC News at 6, Nov. 04: Crash on Main", news=True) == [
+        "CBC News at 6, Nov. 04",
+        "Crash on Main",
+    ]
+    from sidekick.topic import clean_title
+
+    assert clean_title("CBC News at 6, Nov. 04: Crash on Main", set(), True) == "Crash on Main"
+    assert clean_title("ABC World News Tonight with Jane Roe - Nov. 4, 2026", set(), True) == ""
+    assert clean_title("Bayes: a gentle intro | Stats Channel", {"stat", "channel"}) == (
+        "Bayes: a gentle intro"
+    )  # outside news, ": " doesn't split
+
+
+def test_find_places_probes_show_names_only():
+    spacy = pytest.importorskip("spacy")
+    from sidekick.topic import find_places
+
+    nlp_ = spacy.blank("en")
+    nlp_.add_pipe("entity_ruler").add_patterns(
+        [
+            {"label": "ORG", "pattern": "Metro Harbour City"},
+            {"label": "GPE", "pattern": [{"LOWER": "in"}, {"TEXT": "Harbour"}, {"TEXT": "City"}]},
+            {"label": "GPE", "pattern": [{"LOWER": "in"}, {"TEXT": "Port"}]},
+            {"label": "LOC", "pattern": "World"},
+        ]
+    )
+
+    class Probe(nlp.SpacyTagger):  # strip the "in " the ruler includes in the span
+        def entities(self, text):
+            out = super().entities(text)
+            return [nlp.Entity(e.text.removeprefix("in "), e.label) for e in out]
+
+    tg = Probe(nlp_, name="ruler")
+    assert find_places(tg, "Port strike | Metro News Harbour City at Six", "Metro", set()) == [
+        "Harbour City"
+    ]  # "Port" starts the story segment, so it isn't probed
+    assert find_places(tg, "ABC World Tonight with Jane Roe", "ABC News", set()) == []

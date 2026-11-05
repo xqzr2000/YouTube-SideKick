@@ -29,6 +29,7 @@ FILLER = frozenset(
     news breaking live update updates full episode episodes video videos watch today tonight
     report reports latest new says said clip clips official channel subscribe exclusive
     interview segment broadcast newscast highlights recap part watch special coverage
+    prof professor instructor lecture presentation
     """.split()
 ) | frozenset(
     # bare month and weekday names (dates with a day number are removed by DATE_RE)
@@ -192,9 +193,50 @@ def is_generic_chapter(title: str) -> bool:
     return len(content) < 2
 
 
+# A period after these doesn't end a sentence ("In this lecture, Prof. Rigollet…").
+ABBREVIATIONS = frozenset(
+    """
+    prof dr mr mrs ms st sr jr vs no mt ft gen gov sen rep lt sgt capt col inc co corp ltd
+    dept univ approx est fig vol u.s u.k b.c e.g i.e etc
+    """.split()
+)
+_BOUNDARY_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"“‘'])")
+
+
 def first_sentence(text: str, max_chars: int = 300) -> str:
-    """The first sentence of ``text`` (or its first ``max_chars``)."""
+    """The first sentence of ``text`` (or its first ``max_chars``); abbreviations and
+    initials ("Prof.", "U.S.", "J.") don't end a sentence."""
     t = _WS_RE.sub(" ", text or "").strip()
-    m = re.search(r"(?<=[.!?])\s+(?=[A-Z\"“])", t)
-    s = t[: m.start()] if m else t
-    return s[:max_chars].strip()
+    for m in _BOUNDARY_RE.finditer(t):
+        before = t[: m.start()].rsplit(None, 1)[-1].rstrip(".!?").casefold()
+        if before in ABBREVIATIONS or (len(before) == 1 and before.isalpha()):
+            continue
+        return t[: m.start()][:max_chars].strip()
+    return t[:max_chars].strip()
+
+
+_SEGMENT_RE = re.compile(r"\s*[|•·]\s*")
+_NEWS_SEGMENT_RE = re.compile(r"\s*[|•·]\s*|:\s+|\s+[-–—]\s+")
+
+
+def title_segments(title: str, news: bool = False) -> list[str]:
+    """``"Story | Show Name | Channel"`` → ``["Story", "Show Name", "Channel"]``. News titles
+    also split at ": " and " - " ("CBC Vancouver News at 6, Nov. 04: Story")."""
+    rx = _NEWS_SEGMENT_RE if news else _SEGMENT_RE
+    return [p.strip() for p in rx.split(title or "") if p.strip()]
+
+
+def channel_keywords(keyword_lists: Iterable[Sequence[str]], min_videos: int = 2) -> set[str]:
+    """Tags (casefolded) that appear on at least ``min_videos`` of a channel's videos."""
+    counts: Counter[str] = Counter()
+    for kws in keyword_lists:
+        counts.update({k.strip().casefold() for k in kws if k and k.strip()})
+    return {k for k, c in counts.items() if c >= min_videos}
+
+
+def strip_entity(text: str) -> str:
+    """Entity text without surrounding punctuation or a leading "the"."""
+    t = text.strip(" \t•·|-–—:;,.\"“”'‘’()[]")
+    for art in ("the ", "The "):
+        t = t.removeprefix(art)
+    return t

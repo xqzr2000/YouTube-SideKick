@@ -2,21 +2,30 @@
 
 Decided 2026-11-05 (Russell): every compute gets a topic anchor; in a **news context** it is
 strict and means **the lead story only**, and pundit/commentary videos should not be shown
-there (that rule comes with the next PR, once there are "same story?" labels).
+there (that rule comes with a later PR, once there are "same story?" labels). Elsewhere the
+anchor is lighter: the series the video belongs to counts as part of its topic.
 
 Extraction, for one video (no transcripts in v1):
 
-1. **Clean.** Drop the channel's boilerplate description lines and its title template
-   (see :mod:`sidekick.topic.text`). Template words are kept apart as ``series``.
-2. **Lead.** If the title still says something specific (2+ content words left), the lead is
-   the title plus the first content sentence of the description (``title+desc``). Otherwise
-   (a full newscast, "… at Six for Tuesday"), the lead is the first chapter that isn't an
-   intro/headlines/weather/sports (``chapter``), else the first specific description line
-   (``description``), else the title.
+1. **Clean.** Drop the channel's boilerplate description lines, and split the title into
+   segments (``"Story | Show | Channel"``), dropping the segments that are only channel name /
+   title template / dates (see :mod:`sidekick.topic.text`). Template words are kept as
+   ``series``.
+2. **Lead.** *Outside news:* the cleaned title plus the first specific description sentence
+   (``title+desc``), or the cleaned title alone (``title``). *In news:* the same if the
+   cleaned title still says something specific (2+ content words); otherwise, for a full
+   newscast ("… at Six for Tuesday"), the first chapter that isn't an intro/headlines/
+   weather/sports (``chapter``), else the first specific description line (``description``),
+   else ``none`` (no usable topic).
 3. **Entities and keyphrases** from the lead only, with spaCy (:mod:`sidekick.topic.nlp`).
+   ``places`` (GPE/LOC entities anywhere in the title or channel name, e.g. "Vancouver" in
+   "CTV News Vancouver at Six") are kept for the search query, since a local story is defined
+   by where it is.
 4. **Weighted tokens**: each token weighs its IDF over our own videos (so "rezoning" counts
    more than "council"): 1× in the headline (title, chapter or lead line), 0.6× in the
-   description sentence of a ``title+desc`` lead, 0.3× in keywords and the next lines.
+   description sentence of a ``title+desc`` lead, 0.3× in tags and the next lines. Channel-name
+   words never count. *In news,* template words and tags repeated across the channel's videos
+   ("BC news") don't count either; *outside news,* template words count 0.3× (same series).
    Keyphrases rank by mean token weight × √length.
 
 Matching a candidate against the anchor (:func:`match`) gives interpretable parts, all in
@@ -41,6 +50,10 @@ from sidekick.store.db import Store
 from sidekick.topic import text as tx
 from sidekick.topic.nlp import SKIP_LABELS, HeuristicTagger, Tagger
 
+PLACE_LABELS = frozenset({"GPE", "LOC"})
+# Place-like words in news-program names that don't locate a story ("ABC World News").
+NOT_PLACES = frozenset({"world", "nation", "national", "international", "global", "earth"})
+
 NEWS_CATEGORY = "News & Politics"
 _NEWS_NAME_RE = re.compile(r"\bnews\b|newshour|newscast|\bnewsroom\b|\bnews ?night\b", re.I)
 LEAD_DESC_WEIGHT = 0.6  # first description sentence of a title+desc lead
@@ -61,6 +74,7 @@ class Topic:
     weights: dict[str, float] = field(default_factory=dict)  # token -> weight
     entity_tokens: set[str] = field(default_factory=set)
     series: list[str] = field(default_factory=list)
+    places: list[str] = field(default_factory=list)  # news only: GPE/LOC in title / channel
     is_news: bool = False
     news_reason: str = ""
     published_at: str | None = None
@@ -72,11 +86,19 @@ class Topic:
         return tx.DATE_RE.sub(" ", self.lead).strip()
 
     def query(self, max_words: int = 6) -> str:
-        """A search query for this topic (for M4 backfill): entities first, then keyphrases."""
+        """A search query for this topic (for M4 backfill): entities, then keyphrases; in news,
+        the place is always included ("tunnel turnaround Vancouver")."""
+        if self.lead_source == "none":
+            return ""
+        place_words = []
+        if self.is_news:
+            for p in self.places:
+                place_words += p.split()
         words: list[str] = []
-        seen: set[str] = set()
+        seen: set[str] = {tx.norm_token(w) for w in place_words}
+        budget = max(1, max_words - len(place_words))
         for text_, _ in self.entities:
-            for w in text_.split():
+            for w in (tx.strip_entity(x) for x in text_.split()):
                 n = tx.norm_token(w)
                 if n and n not in seen and n not in tx.STOP:
                     words.append(w)
@@ -86,7 +108,7 @@ class Topic:
                 if n not in seen:
                     words.append(n)
                     seen.add(n)
-        return " ".join(words[:max_words])
+        return " ".join((words[:budget] + place_words)[:max_words])
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -95,6 +117,7 @@ class Topic:
             "entities": [f"{t} ({lab})" for t, lab in self.entities],
             "keyphrases": [p for p, _ in self.keyphrases],
             "series": self.series,
+            "places": self.places,
             "news": self.news_reason or "no",
             "query": self.query(),
             "tagger": self.tagger,
@@ -113,21 +136,32 @@ class TopicContext:
             df.update(set(tx.tokens(_doc_text(dict(r)))))
         self.n_docs = len(rows)
         self.df = df
-        self._channels: dict[str, tuple[set[str], set[str]]] = {}
+        self._channels: dict[str, ChannelInfo] = {}
 
     def idf(self, token: str) -> float:
         return math.log((self.n_docs + 1) / (self.df.get(token, 0) + 1)) + 1.0
 
-    def channel(self, channel: str) -> tuple[set[str], set[str]]:
-        """``(boilerplate lines, title template)`` for a channel, from our database."""
+    def channel(self, channel: str) -> ChannelInfo:
+        """Boilerplate lines, title template and repeated tags of a channel, from our DB."""
         if channel not in self._channels:
             rows = self.store.conn.execute(
-                "SELECT title, description FROM videos WHERE channel = ?", (channel,)
+                "SELECT title, keywords, description FROM videos WHERE channel = ?", (channel,)
             ).fetchall()
-            boiler = tx.channel_boilerplate(r["description"] or "" for r in rows)
-            template = tx.title_template([r["title"] or "" for r in rows])
-            self._channels[channel] = (boiler, template)
+            self._channels[channel] = ChannelInfo(
+                boiler=tx.channel_boilerplate(r["description"] or "" for r in rows),
+                template=tx.title_template([r["title"] or "" for r in rows]),
+                tags=tx.channel_keywords(_keywords(dict(r)) for r in rows),
+                tokens=set(tx.tokens(channel)),
+            )
         return self._channels[channel]
+
+
+@dataclass(frozen=True)
+class ChannelInfo:
+    boiler: set[str]  # normalized description lines on 2+ of the channel's videos
+    template: set[str]  # title words in most of the channel's titles
+    tags: set[str]  # tags (casefolded) on 2+ of the channel's videos
+    tokens: set[str]  # words of the channel name
 
 
 def _doc_text(v: dict[str, Any]) -> str:
@@ -155,29 +189,124 @@ def news_context(v: dict[str, Any]) -> str:
     return ""
 
 
-def _pick_lead(v: dict[str, Any], boiler: set[str], drop: set[str]) -> tuple[str, str, list[str]]:
-    """``(lead, source, secondary lines)``."""
-    title = v.get("title") or ""
+_PROGRAM_RE = re.compile(
+    r"\b(?:at (?:six|five|noon|eleven|\d{1,2})|tonight|nightly|hour|newshour|prime|live|"
+    r"full (?:broadcast|episode|show)|newscast|bulletin|evening|morning|update)\b",
+    re.I,
+)
+
+
+def is_show_segment(seg: str, show: set[str], is_news: bool) -> bool:
+    """A title segment that names the show, not the story: only channel/template words, or
+    (in news) a news-program name ("CTV News Vancouver at Six", "ABC World News Tonight with
+    David Muir Full Broadcast", or any "… News …" segment with a date)."""
+    if not any(t not in show for t in tx.tokens(seg)):
+        return True
+    if not is_news or not _NEWS_NAME_RE.search(seg):
+        return False
+    return bool(tx.DATE_RE.search(seg) or _PROGRAM_RE.search(seg))
+
+
+def clean_title(title: str, show: set[str], is_news: bool = False) -> str:
+    """The title without segments that only name the show / channel or a date."""
+    segs = tx.title_segments(title, news=is_news)
+    keep = [seg for seg in segs if not is_show_segment(seg, show, is_news)]
+    if keep:
+        return " | ".join(keep)
+    return "" if is_news else (title or "")  # a news title that only names the show
+
+
+_CAP_RUN_RE = re.compile(r"[A-Z][\w.'’-]*(?:\s+[A-Z][\w.'’-]*)*")
+
+
+def _ngrams(words: list[str]) -> list[str]:
+    """All contiguous word spans, longest first."""
+    n = len(words)
+    return [" ".join(words[i : i + k]) for k in range(n, 0, -1) for i in range(n - k + 1)]
+
+
+def find_places(tagger: Tagger, title: str, channel: str, show: set[str]) -> list[str]:
+    """Places (GPE/LOC) named in a news video's title segments or channel name.
+
+    spaCy reads "CTV News Vancouver" as one ORG and finds nothing in "Vancouver at Six", so
+    besides the normal entities, the capitalized runs in show-name segments and in the channel
+    name are probed as "in <span>" (spans longest first), where the recognizer reliably says
+    whether something is a place. Only GPE counts in a probe, and spans with an all-caps
+    acronym (CBC, CTV) or a person's name ("David Muir") are skipped.
+    """
+    out: list[str] = []
+
+    def have(p: str) -> bool:
+        return p.casefold() in {x.casefold() for x in out}
+
+    def add(p: str) -> None:
+        p = tx.strip_entity(p)
+        if p and not have(p) and p.casefold() not in NOT_PLACES:
+            out.append(p)
+
+    for seg in [*tx.title_segments(title, news=True), channel]:
+        words = [w for w in seg.split() if re.sub(r"\W", "", w).casefold() not in tx.FILLER]
+        text_ = tx.DATE_RE.sub(" ", " ".join(words))
+        ents = tagger.entities(text_)
+        for e in ents:
+            if e.label in PLACE_LABELS:
+                add(e.text)
+        if seg != channel and not is_show_segment(seg, show, True):
+            continue  # in a story segment every sentence-initial word is capitalized
+        person = {w for e in ents if e.label == "PERSON" for w in e.text.split()}
+        for run in _CAP_RUN_RE.findall(text_):
+            used: set[str] = set()
+            for span in _ngrams(run.split()):
+                ws = span.split()
+                if used & set(ws) or person & set(ws) or have(span) or not tx.tokens(span):
+                    continue
+                if any(len(w) > 1 and w.isupper() for w in ws):
+                    continue
+                probe = tagger.entities(f"in {span}")
+                if len(probe) == 1 and probe[0].label == "GPE" and probe[0].text == span:
+                    add(span)
+                    used |= set(ws)
+    return out
+
+
+def _pick_lead(
+    v: dict[str, Any], ch: ChannelInfo, is_news: bool
+) -> tuple[str, str, str, list[str]]:
+    """``(lead, source, headline part, secondary lines)``."""
+    show = ch.template | ch.tokens
+    title = clean_title(v.get("title") or "", show, is_news)
     desc = v.get("description") or ""
     chaps = tx.chapters(desc)
-    lines = [ln for ln in tx.content_lines(desc, boiler) if not (chaps and tx.is_chapter_line(ln))]
+    lines = [
+        ln for ln in tx.content_lines(desc, ch.boiler) if not (chaps and tx.is_chapter_line(ln))
+    ]
 
     def specific(s: str, n: int = MIN_SPECIFIC) -> bool:
-        return len([t for t in tx.tokens(s) if t not in drop]) >= n
+        return len([t for t in tx.tokens(s) if t not in show]) >= n
 
-    if specific(title):
-        first = next((tx.first_sentence(ln) for ln in lines if specific(ln, 3)), "")
-        if first:
-            return f"{title}. {first}", "title+desc", lines[1 : 1 + SECONDARY_LINES]
-        return title, "title", lines[:SECONDARY_LINES]
+    def with_desc() -> tuple[str, str, str, list[str]]:
+        for i, ln in enumerate(lines):
+            if specific(ln, 3):
+                rest = lines[:i] + lines[i + 1 :]
+                return (
+                    f"{title}. {tx.first_sentence(ln)}",
+                    "title+desc",
+                    title,
+                    rest[:SECONDARY_LINES],
+                )
+        return title, "title", title, lines[:SECONDARY_LINES]
+
+    if not is_news or specific(title):
+        return with_desc()
     for _, ct in chaps:
         if not tx.is_generic_chapter(ct) and specific(ct):
-            return ct, "chapter", lines[:SECONDARY_LINES]
+            return ct, "chapter", ct, lines[:SECONDARY_LINES]
     for i, ln in enumerate(lines):
         if specific(ln, 3):
-            return tx.first_sentence(ln), "description", lines[i + 1 : i + 1 + SECONDARY_LINES]
-    # A template-only title with nothing usable behind it: no topic to anchor on.
-    return title, "none", []
+            first = tx.first_sentence(ln)
+            return first, "description", first, lines[i + 1 : i + 1 + SECONDARY_LINES]
+    # A template-only newscast title with nothing usable behind it: no topic to anchor on.
+    return title, "none", "", []
 
 
 def extract(ctx: TopicContext, video: dict[str, Any] | str) -> Topic | None:
@@ -186,45 +315,56 @@ def extract(ctx: TopicContext, video: dict[str, Any] | str) -> Topic | None:
     if not v:
         return None
     channel = v.get("channel") or ""
-    boiler, template = ctx.channel(channel)
-    chan_tokens = set(tx.tokens(channel))
-    drop = template | chan_tokens
-    lead, source, secondary = _pick_lead(v, boiler, drop)
+    ch = ctx.channel(channel)
+    reason = news_context(v)
+    is_news = bool(reason)
+    # In news the show's own words never count; outside news only the channel name doesn't.
+    drop = ch.tokens | (ch.template if is_news else set())
+    lead, source, head, secondary = _pick_lead(v, ch, is_news)
+    rest = lead[len(head) :] if source == "title+desc" else ""
+    tags = [k for k in _keywords(v) if not (is_news and k.strip().casefold() in ch.tags)]
 
-    # Headline words count fully; the description's first sentence a bit less; keywords and
-    # the next lines less again.
     weights: dict[str, float] = {}
-    head, rest = (v.get("title") or "", lead) if source == "title+desc" else (lead, "")
     for part, w in ((head, 1.0), (rest, LEAD_DESC_WEIGHT)):
         for t in tx.tokens(part):
             if t not in drop:
                 weights[t] = max(weights.get(t, 0.0), w * ctx.idf(t))
-    for t in tx.tokens(" ".join(_keywords(v) + secondary)):
+    for t in tx.tokens(" ".join(tags + secondary)):
         if t not in drop and t not in weights:
             weights[t] = SECONDARY_WEIGHT * ctx.idf(t)
+    if not is_news:
+        for t in ch.template:
+            if t not in drop and t not in weights:
+                weights[t] = SECONDARY_WEIGHT * ctx.idf(t)
 
     ents: list[tuple[str, str]] = []
     ent_tokens: set[str] = set()
     seen: set[str] = set()
-    for e in ctx.tagger.entities(lead):
+    for e in ctx.tagger.entities(lead) if source != "none" else []:
         if e.label in SKIP_LABELS:
             continue
-        toks = [t for t in tx.tokens(e.text) if t not in drop]
+        text_ = tx.strip_entity(e.text)
+        toks = [t for t in tx.tokens(text_) if t not in drop]
         key = " ".join(toks)
         if not toks or key in seen:
             continue
         seen.add(key)
-        ents.append((e.text.removeprefix("the ").removeprefix("The "), e.label))
+        ents.append((text_, e.label))
         ent_tokens.update(toks)
 
+    places = (
+        find_places(ctx.tagger, v.get("title") or "", channel, ch.template | ch.tokens)
+        if is_news
+        else []
+    )
+
     phrases: dict[tuple[str, ...], float] = {}
-    for p in ctx.tagger.phrases(lead):
+    for p in ctx.tagger.phrases(lead) if source != "none" else []:
         toks = tuple(dict.fromkeys(t for t in tx.tokens(p) if t not in drop))
         if toks and toks not in phrases:  # mean weight × √length: multiword, not just long
             phrases[toks] = sum(weights.get(t, 0.0) for t in toks) / len(toks) ** 0.5
     keyphrases = sorted(((" ".join(k), round(s, 2)) for k, s in phrases.items()), key=_by_score)
 
-    reason = news_context(v)
     return Topic(
         video_id=v["video_id"],
         title=v.get("title") or "",
@@ -233,14 +373,47 @@ def extract(ctx: TopicContext, video: dict[str, Any] | str) -> Topic | None:
         lead_source=source,
         entities=ents[:8],
         keyphrases=keyphrases[:6],
-        weights=weights,
+        weights=weights if source != "none" else {},
         entity_tokens=ent_tokens,
-        series=sorted(template),
-        is_news=bool(reason),
+        series=sorted(ch.template),
+        places=places[:3],
+        is_news=is_news,
         news_reason=reason,
         published_at=v.get("published_at"),
         tagger=getattr(ctx.tagger, "name", ""),
     )
+
+
+def explain_text(ctx: TopicContext, video: dict[str, Any] | str) -> list[tuple[str, str]]:
+    """How each title segment, description line and tag of a video was classified, for
+    ``just topic --text``: ``(mark, text)`` with mark ``show`` / ``boiler`` / ``pattern`` /
+    ``chapter`` / ``channel-tag`` / ``keep``."""
+    v = ctx.store.get_video(video) if isinstance(video, str) else video
+    if not v:
+        return []
+    ch = ctx.channel(v.get("channel") or "")
+    show = ch.template | ch.tokens
+    out: list[tuple[str, str]] = []
+    is_news = bool(news_context(v))
+    for seg in tx.title_segments(v.get("title") or "", news=is_news):
+        is_show = is_show_segment(seg, show, is_news)
+        out.append(("title:show" if is_show else "title:keep", seg))
+    chaps = tx.chapters(v.get("description") or "")
+    for line in (v.get("description") or "").splitlines():
+        if not line.strip():
+            continue
+        if tx.norm_line(line) in ch.boiler:
+            mark = "boiler"
+        elif chaps and tx.is_chapter_line(line):
+            mark = "chapter"
+        elif tx.is_pattern_boilerplate(line):
+            mark = "pattern"
+        else:
+            mark = "keep"
+        out.append((mark, line.strip()[:150]))
+    for k in _keywords(v):
+        out.append(("tag:channel" if k.strip().casefold() in ch.tags else "tag:keep", k))
+    return out
 
 
 def _by_score(kv: tuple[str, float]) -> tuple[float, str]:
