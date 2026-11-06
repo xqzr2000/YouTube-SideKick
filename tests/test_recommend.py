@@ -6,11 +6,12 @@ from sidekick.models import Candidate, SearchPage, VideoMeta, WatchPage
 from sidekick.profile import parse_profile
 from sidekick.recommend import Config, recommend
 from sidekick.recommend import __main__ as cli
+from sidekick.recommend import diversity as dv
 from sidekick.recommend import queries as qmod
 from sidekick.recommend import score as sc
 from sidekick.store.db import Store
 from sidekick.topic import Topic
-from sidekick.topic.nlp import HeuristicTagger
+from sidekick.topic.nlp import Entity, HeuristicTagger
 
 PROFILE = parse_profile(
     "## Interests\n- bayesian statistics\n\n## Rules\n- min_duration: 3m\n\n"
@@ -75,6 +76,10 @@ class FakeFetcher:
             if vid == CUR
             else []
         )
+        if vid.startswith("BAYES"):  # related videos of an on-topic page (snowball)
+            title = "Bayesian priors in practice"
+            up = [Candidate("SNOW0000001", title=title, channel="Snow Lab", duration_s=900)]
+            self.metas.setdefault("SNOW0000001", meta("SNOW0000001", title, "Snow Lab"))
         return WatchPage(meta=self.metas.get(vid), upnext=up)
 
     def search(self, q):
@@ -157,13 +162,12 @@ def test_round1_queries():
 # -- pipeline ---------------------------------------------------------------------------------
 
 
-def test_no_backfill_when_enough_survive(store, tmp_path):
-    res, f = run(store, tmp_path, min_pool=3)
+def test_up_next_only_when_search_is_off(store, tmp_path):
+    res, f = run(store, tmp_path, min_pool=3, always_search=False)
     assert res.status == "ok" and f.searched == [] and "min_pool 3" in res.backfill_skipped
     shown = [r.candidate.video_id for r in res.shown]
     assert "POLI0000001" not in shown  # Stage C, political line
     assert shown.index("BAYES000001") < shown.index("COOK0000001")
-    assert shown[:3] == sorted(shown[:3], key=lambda v: v.startswith("BAYES"), reverse=True)
     rows = store.conn.execute(
         "SELECT video_id, kept, score, features FROM decisions WHERE stage = 'R'"
     ).fetchall()
@@ -172,23 +176,38 @@ def test_no_backfill_when_enough_survive(store, tmp_path):
     assert tuple(c) == ("ok", 0, f.pages_fetched)
 
 
-def test_backfill_round_searches_and_counts_recurrence(store, tmp_path):
-    res, f = run(store, tmp_path, min_pool=50)
-    assert len(f.searched) >= 1 and res.rounds[1].queries[0][1] == "topic"
-    q = store.conn.execute("SELECT round, method FROM queries").fetchall()
-    assert [tuple(x) for x in q][0] == (1, "topic")
+def test_round1_always_searches_then_stops_when_enough(store, tmp_path):
+    res, f = run(store, tmp_path, min_pool=3)
+    assert len(f.searched) == 1 and [r.round for r in res.rounds] == [0, 1]
+    assert res.backfill_skipped.startswith("round 2:")
     by = {r.candidate.video_id: r for r in res.ranked}
     assert by["BAYES000002"].parts["recurrence"] > 0  # up-next and search
     assert by["BAYES000004"].parts["lists"][0].startswith("query:")
+    q = store.conn.execute("SELECT round, method FROM queries").fetchall()
+    assert [tuple(x) for x in q] == [(1, "topic")]
+
+
+def test_rounds_2_3_add_rocchio_and_snowball_when_short(store, tmp_path):
+    res, f = run(store, tmp_path, min_pool=50)
+    assert [r.round for r in res.rounds][:3] == [0, 1, 2]
+    r2 = res.rounds[2]
+    assert r2.snowball and r2.snowball[0][0].startswith("BAYES")
     src = dict(
         store.conn.execute("SELECT source, COUNT(*) FROM candidates GROUP BY source").fetchall()
     )
-    assert src["upnext"] == len(UPNEXT) and src["query"] >= len(SEARCH)
-    assert store.conn.execute("SELECT rounds_used FROM computes").fetchone()[0] == 1
+    assert src["upnext"] == len(UPNEXT) and src["query"] >= len(SEARCH) and src["snowball"] >= 1
+    by = {r.candidate.video_id: r for r in res.ranked}
+    assert any(x.startswith("snowball:") for x in by["SNOW0000001"].parts["lists"])
+    assert store.conn.execute("SELECT rounds_used FROM computes").fetchone()[0] >= 2
+
+
+def test_deadline_stops_later_rounds(store, tmp_path):
+    res, f = run(store, tmp_path, min_pool=50, deadline_s=-1)
+    assert [r.round for r in res.rounds] == [0, 1] and "deadline" in res.backfill_skipped
 
 
 def test_enrich_budget_goes_to_best_prescore(store, tmp_path):
-    res, f = run(store, tmp_path, min_pool=3, enrich_cap=2)
+    res, f = run(store, tmp_path, min_pool=3, enrich_cap=2, always_search=False)
     enriched = [v for v in f.watched if v != CUR]
     assert len(enriched) == 2 and all(v.startswith("BAYES") for v in enriched)
     by = {r.candidate.video_id: r for r in res.ranked}
@@ -201,11 +220,82 @@ def test_enrich_budget_goes_to_best_prescore(store, tmp_path):
     assert pre["BAYES000001"] > pre["CAR00000001"]
 
 
-def test_channel_cap(store, tmp_path):
-    res, _ = run(store, tmp_path, min_pool=50, per_channel=1, top_k=4)
-    chans = [r.candidate.channel for r in res.shown]
-    assert len(chans) == 4 and len(set(chans)) == 4
-    assert any(r.reason == "channel_cap" for r in res.ranked if r.rank is None)
+def test_group_caps_in_the_pipeline(store, tmp_path):
+    res, _ = run(store, tmp_path, min_pool=3, caps={"lecture": 1, "other": 1}, top_k=4)
+    assert res.kind == "lecture"  # current video is Education
+    groups = [r.parts["group"] for r in res.shown]
+    assert len(groups) == 4 and len(set(groups)) == 4
+    assert any(r.reason == "group_cap" for r in res.ranked if r.rank is None)
+
+
+class FakeTagger:
+    name = "fake"
+
+    def entities(self, text):
+        return [Entity("Chad Thornsberry", "PERSON")] if "Chad Thornsberry" in text else []
+
+    def phrases(self, text):
+        return []
+
+
+def test_context_kind_and_group_key():
+    assert dv.context_kind("Education", "Bayes") == "lecture"
+    assert dv.context_kind("Comedy", "Lecture 22: RL") == "lecture"
+    assert dv.context_kind("Comedy", "I Tried To Run A 5K") == "other"
+    t = FakeTagger()
+    a = dv.group_key("It's Great | Chad Thornsberry | Dry Bar", "Dry Bar Clips", "other", t)
+    b = dv.group_key("The BEST of Chad Thornsberry", "Dry Bar Comedy", "other", t)
+    assert a == b == "person:chad thornsberry"
+    assert dv.group_key("Some clip", "Dry Bar Clips", "other", t) == "channel:dry bar clips"
+    assert dv.group_key("Chad Thornsberry", "MIT", "lecture", t) == "channel:mit"
+
+
+def test_mmr_caps_redundancy_and_fill():
+    import numpy as np
+
+    vecs = np.array([[1, 0], [0.99, 0.14], [0, 1], [0.1, 0.99]], dtype=np.float32)
+    vecs /= np.linalg.norm(vecs, axis=1, keepdims=True)
+    order, info = dv.mmr_select([0.9, 0.85, 0.6, 0.5], vecs, ["a", "b", "c", "d"], k=2, cap=5)
+    assert order == [0, 2]  # 1 is a near-duplicate of 0
+    order, _ = dv.mmr_select([0.9, 0.85, 0.6], None, ["a", "a", "b"], k=2, cap=1)
+    assert order == [0, 2]
+    order, info = dv.mmr_select([0.9, 0.85], None, ["a", "a"], k=2, cap=1)
+    assert order == [0, 1] and info[1]["filled_past_cap"]
+
+
+def test_rocchio_adds_shared_terms():
+    anchor = Topic(
+        "x",
+        "t",
+        "c",
+        "Will there be a tunnel turnaround?",
+        "title",
+        keyphrases=[("tunnel turnaround", 3.0)],
+        weights={"tunnel": 2.0, "turnaround": 3.0},
+    )
+    rel = [
+        Topic(
+            "a",
+            "",
+            "",
+            "",
+            "title",
+            weights={"massey": 3, "tunnel": 2, "replacement": 2},
+            surface={"massey": "Massey"},
+        ),
+        Topic(
+            "b",
+            "",
+            "",
+            "",
+            "title",
+            weights={"massey": 3, "replacement": 1, "bridge": 2},
+            surface={"massey": "Massey"},
+        ),
+        Topic("c", "", "", "", "title", weights={"ferry": 1}),
+    ]
+    assert qmod.rocchio(anchor, rel) == "tunnel turnaround Massey replacement"
+    assert qmod.rocchio(anchor, rel[2:]) == ""
 
 
 def test_cli_prints_top(tmp_path, monkeypatch, capsys):
@@ -235,5 +325,6 @@ def test_cli_prints_top(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "SponsorBlock", SB)
     assert cli.main([f"https://www.youtube.com/watch?v={CUR}", "--min-pool", "50"]) == 0
     out = capsys.readouterr().out
-    assert "round 0  up-next 6" in out and "round 1  search" in out
+    assert "round 0  up-next 6" in out and "round 1  topic" in out and "snowball" in out
+    assert "lecture context: same course ≤ 5" in out
     assert "top " in out and "18. Bayesian Statistics (cont.)" in out and "compute " in out

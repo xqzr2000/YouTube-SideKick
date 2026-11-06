@@ -6,13 +6,17 @@
    **Stage A** (hard filters) → **pre-score** on cheap fields (:mod:`.score`) → **Stage B** on the
    best-scoring ones until the compute's enrichment budget is spent (the rest pass through
    unenriched) → **Stage C** (soft filters).
-3. **Backfill:** while fewer than ``min_pool`` videos survive, the next round searches
-   (:mod:`.queries`; round 1 only so far, so at most one backfill round).
-4. **Rank:** the v0 score over all survivors, a per-channel cap, top ``top_k``.
+3. **Round 1 always searches** (Russell, 2026-11-05: on the Chi Jin seed it added several good
+   picks for +17 s) with the topic query, plus an Interests-crossed query in interest mode.
+4. **Rounds 2–3** only while fewer than ``min_pool`` videos survive and the compute is still
+   under ``deadline_s``: a Rocchio-expanded query and snowball lists (up-next of the best
+   survivors, taken from watch pages already fetched for enrichment).
+5. **Pick:** the v0 score over all survivors, then MMR with group caps
+   (:mod:`.diversity`: same course ≤ 5 in a lecture context, same performer/show ≤ 2 elsewhere).
 
 Everything is logged: queries, candidates (source, round, query, position), decisions for
-stages A/B/C, and the ranking as stage ``R`` (``kept`` = shown, ``score`` = v0, features =
-all parts and the rank). Pre-scores are stored on the Stage B decisions.
+stages A/B/C, and the pick as stage ``R`` (``kept`` = shown, ``score`` = v0, features = all
+parts, group, MMR value and the rank). Pre-scores are stored on the Stage B decisions.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ from sidekick.filters.stage_a import log_decisions, run_stage_a
 from sidekick.filters.stage_b import run_stage_b
 from sidekick.filters.stage_c import GateResult, build_space, interest_gate, run_stage_c
 from sidekick.models import Candidate, VideoMeta
+from sidekick.recommend import diversity as dv
 from sidekick.recommend import queries as qmod
 from sidekick.recommend import score as sc
 from sidekick.store.db import Store
@@ -38,18 +43,22 @@ STAGE_RANK = "R"
 
 @dataclass
 class Config:
-    min_pool: int = 10  # backfill while fewer survivors than this
-    max_rounds: int = 1  # backfill rounds after the up-next list (round 1 only so far)
+    min_pool: int = 10  # rounds 2-3 run while fewer survivors than this
+    max_rounds: int = 3  # search rounds after the up-next list (spec: at most 3)
+    always_search: bool = True  # round 1 runs even when up-next alone is enough
+    deadline_s: float = 60.0  # don't start round 2 or 3 after this many seconds
     enrich_cap: int = 25  # candidates considered for enrichment per compute (cache hits count)
     top_k: int = 10
-    per_channel: int = 3  # diversity stopgap until MMR
-    force_backfill: bool = False
+    lam: float = dv.LAMBDA  # MMR: relevance vs. variety
+    caps: dict[str, int] = field(default_factory=lambda: dict(dv.CAPS))
+    snowball_from: int = 2  # best survivors whose up-next is added in rounds 2-3
 
 
 @dataclass
 class RoundLog:
     round: int
     queries: list[tuple[str, str, int]] = field(default_factory=list)  # (query, method, n)
+    snowball: list[tuple[str, int]] = field(default_factory=list)  # (from video, n)
     n_candidates: int = 0
     n_new: int = 0
     a_kept: int = 0
@@ -67,7 +76,7 @@ class Ranked:
     score: float
     parts: dict[str, Any]
     rank: int | None  # 1..top_k when shown, else None
-    reason: str | None = None  # why not shown (rank / channel_cap)
+    reason: str | None = None  # why not shown (rank / group_cap)
 
 
 @dataclass
@@ -79,6 +88,7 @@ class Result:
     rounds: list[RoundLog] = field(default_factory=list)
     ranked: list[Ranked] = field(default_factory=list)
     backfill_skipped: str = ""
+    kind: str = "other"  # lecture | other (diversity caps)
     pages: int = 0
     seconds: float = 0.0
     status: str = "ok"
@@ -97,6 +107,8 @@ class _Pool:
         self.best_pos: dict[str, tuple[int, int]] = {}  # vid -> (position, list length)
         self.c_feats: dict[str, dict[str, Any]] = {}  # Stage C features of survivors
         self.enriched: dict[str, bool] = {}
+        self.upnext: dict[str, list[Candidate]] = {}  # up-next of pages fetched in Stage B
+        self.snowballed: set[str] = set()
 
     def add_list(self, name: str, items: list[Candidate]) -> list[Candidate]:
         new = []
@@ -192,6 +204,7 @@ def recommend(
             detector=detector,
             cap=cap,
             current_category=res.current.category if res.current else None,
+            on_page=lambda vid, page: pool.upnext.__setitem__(vid, list(page.upnext)),
         )
         budget["left"] -= min(cap, len(survivors))
         for d in b:
@@ -238,16 +251,46 @@ def recommend(
             rep=res.gate.rep,
         )
 
+        res.kind = dv.context_kind(
+            res.current.category if res.current else None, res.current.title if res.current else ""
+        )
         for rnd in range(1, cfg.max_rounds + 1):
             have = len(pool.c_feats)
-            if have >= cfg.min_pool and not cfg.force_backfill:
+            elapsed = time.monotonic() - t0
+            if rnd == 1 and have >= cfg.min_pool and not cfg.always_search:
                 res.backfill_skipped = f"{have} survivors ≥ min_pool {cfg.min_pool}"
                 break
-            qs = qmod.round1(anchor, res.gate.mode, res.gate.best_interest) if rnd == 1 else []
-            if not qs:
-                res.backfill_skipped = "no usable topic for a query"
+            if rnd > 1 and have >= cfg.min_pool:
+                res.backfill_skipped = f"round {rnd}: {have} survivors ≥ min_pool {cfg.min_pool}"
+                break
+            if rnd > 1 and elapsed > cfg.deadline_s:
+                res.backfill_skipped = (
+                    f"round {rnd}: {elapsed:.0f} s > deadline {cfg.deadline_s:.0f} s"
+                )
                 break
             log = RoundLog(round=rnd)
+            if rnd == 1:
+                qs = qmod.round1(anchor, res.gate.mode, res.gate.best_interest)
+                lists: list[tuple[str, str, list[Candidate]]] = []
+            else:
+                best = _score(store, pool, anchor, res, tagger, cid, video_id)
+                best.sort(key=lambda r: -r.score)
+                rel_ctx = TopicContext(store, tagger)
+                rel = [extract(rel_ctx, r.candidate.video_id) for r in best[:3]]
+                q = qmod.rocchio(anchor, [t for t in rel if t is not None])
+                done = {x for lg in res.rounds for x, _, _ in lg.queries}
+                qs = [(q, "rocchio")] if q and q not in done else []
+                lists = []
+                for r in best[: cfg.snowball_from]:
+                    v = r.candidate.video_id
+                    if v in pool.upnext and v not in pool.snowballed:
+                        pool.snowballed.add(v)
+                        lists.append((v, "snowball", pool.upnext[v]))
+            if not qs and not lists:
+                res.backfill_skipped = (
+                    "no usable topic for a query" if rnd == 1 else f"round {rnd}: nothing new"
+                )
+                break
             new = []
             for q, method in qs:
                 sp = fetcher.search(q)
@@ -258,11 +301,16 @@ def recommend(
                 log.queries.append((q, method, len(sp.candidates)))
                 log.n_candidates += len(sp.candidates)
                 new += pool.add_list(f"query:{q}", sp.candidates)
+            for v, _, items in lists:
+                store.log_candidates(cid, items, source="snowball", round=rnd, query=v)
+                log.snowball.append((v, len(items)))
+                log.n_candidates += len(items)
+                new += pool.add_list(f"snowball:{v}", items)
             store.commit()
             ctx = TopicContext(store, tagger)  # IDF and channel stats with the new sightings
             run_round(rnd, new, log)
 
-        res.ranked = _rank(store, pool, anchor, res, cfg, tagger, cid, video_id)
+        res.ranked = _rank(store, pool, anchor, res, cfg, tagger, cid, video_id, space)
     except BaseException as e:
         res.status = "blocked" if type(e).__name__ == "BlockedError" else "error"
         res.pages = getattr(fetcher, "pages_fetched", 0)
@@ -287,7 +335,8 @@ def recommend(
     return res
 
 
-def _rank(store, pool: _Pool, anchor, res: Result, cfg: Config, tagger, cid, video_id):
+def _score(store, pool: _Pool, anchor, res: Result, tagger, cid, video_id) -> list[Ranked]:
+    """v0 scores (unsorted, unpicked) for every survivor so far."""
     ids = list(pool.c_feats)
     if not ids:
         return []
@@ -323,27 +372,33 @@ def _rank(store, pool: _Pool, anchor, res: Result, cfg: Config, tagger, cid, vid
             "earlier_computes": earlier.get(v, 0),
         }
         rows.append(Ranked(cand, sc.v0(parts, mode), feats, None))
+    return rows
+
+
+def _rank(store, pool: _Pool, anchor, res: Result, cfg: Config, tagger, cid, video_id, space):
+    rows = _score(store, pool, anchor, res, tagger, cid, video_id)
+    if not rows:
+        return []
     rows.sort(key=lambda r: (-r.score, r.candidate.video_id))
-    per: dict[str, int] = defaultdict(int)
-    shown: list[Ranked] = []
-    held: list[Ranked] = []
+    ids = [r.candidate.video_id for r in rows]
+    vecs = space.videos(store, ids)[1] if space is not None else None
+    groups = []
     for r in rows:
-        ch = (store.get_video(r.candidate.video_id) or {}).get("channel") or r.candidate.channel
-        if len(shown) < cfg.top_k and per[ch] < cfg.per_channel:
-            per[ch] += 1
-            shown.append(r)
-        else:
-            r.reason = "channel_cap" if len(shown) < cfg.top_k else "rank"
-            held.append(r)
-    for r in held:  # fill up if the cap left gaps
-        if len(shown) >= cfg.top_k:
-            break
-        if r.reason == "channel_cap":
-            r.reason = None
-            shown.append(r)
-    for k, r in enumerate(shown, 1):
-        r.rank = k
-    ordered = shown + [r for r in rows if r.rank is None]
+        meta = store.get_video(r.candidate.video_id) or {}
+        title = meta.get("title") or r.candidate.title
+        channel = meta.get("channel") or r.candidate.channel
+        groups.append(dv.group_key(title, channel, res.kind, tagger))
+    cap = cfg.caps.get(res.kind, cfg.caps.get("other", 2))
+    order, info = dv.mmr_select(
+        [r.score for r in rows], vecs, groups, k=cfg.top_k, cap=cap, lam=cfg.lam
+    )
+    for k, i in enumerate(order, 1):
+        rows[i].rank = k
+    for i, r in enumerate(rows):
+        r.parts.update(group=groups[i], kind=res.kind, **{k: v for k, v in info.get(i, {}).items()})
+        if r.rank is None:
+            r.reason = "group_cap" if info.get(i, {}).get("capped") else "rank"
+    ordered = [rows[i] for i in order] + [r for r in rows if r.rank is None]
     with store.conn:
         for r in ordered:
             store.log_decision(

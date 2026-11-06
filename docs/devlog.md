@@ -36,6 +36,7 @@ evidence from real pages comes from the owner's runs.
 | #23 | M4 | Topic anchor fixes from the first real run: show-name segments, channel tags, series outside news, places, `just topic --text` |
 | #24 | M4 | News context: Don't-show matches drop only non-news and commentary (pundit) titles; `just tune` ignores news-context labels for Don't-show |
 | #25 | M4 | `just recommend`: one full compute with backfill round 1, a cheap pre-score for the enrichment budget, v0 score, per-channel cap |
+| #26 | M4 | Round 1 always searches; rounds 2–3 (Rocchio + snowball) under a deadline; MMR with group caps (same course ≤ 5, same performer/show ≤ 2) |
 
 ---
 
@@ -348,4 +349,21 @@ evidence from real pages comes from the owner's runs.
   search when the topic query already contains the Interests line (it would repeat the same
   results and inflate recurrence); query words keep their spelling ("Bayes rule", not the stem
   "baye rule").
+
+**First real `just recommend` runs, and #26**
+- *Results (cold cache, all under 90 s):* MIT lecture 50.9 s, next lecture first and Bayesian
+  videos after it; Chi Jin with the search round forced 74.2 s (52 s up-next + 17 s search), 3
+  of the course's lectures then search finds (Simons RL tutorial, Poupart's partially
+  observable RL module, Stanford CS224R); Dry Bar comedy 64.0 s, 4 videos of the same comedian
+  on top. Enrichment (18–19 watch pages) is almost all of the time.
+- *Decisions (owner):* the search round **always runs** (it added good picks for +17 s). In a
+  **lecture context the same course may take up to 5 slots** (the cap of 3 had pushed out two
+  lectures labeled good); **elsewhere one performer or show gets at most 2**, counted across
+  channels (the comedian posts through two).
+- **PR #26:** round 1 always; rounds 2–3 only while fewer than 10 survive and the compute is
+  under 60 s, with a Rocchio-expanded query (the topic query plus terms shared by the best 3
+  survivors) and snowball lists (up-next of the best 2 survivors, taken from watch pages
+  enrichment already fetched, so no extra requests); MMR (λ = 0.75, centered vectors) with the
+  group caps in place of the per-channel cap. The group is the channel in a lecture context,
+  else the person named in the title (spaCy PERSON) or the channel.
 

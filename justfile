@@ -50,8 +50,8 @@ sim *args:
 db:
     uv run python -m sidekick.store.db
 
-# One full compute: filter up-next, search when too few survive, score, print the top 10
-# (e.g. `just recommend <id or watch URL>`, `just recommend <id> --backfill --show 20`)
+# One full compute: filter up-next, search, score, pick 10 with MMR, print them
+# (e.g. `just recommend <id or watch URL>`, `just recommend <id> --no-search --show 20`)
 [positional-arguments]
 recommend *args:
     uv run python -m sidekick.recommend "$@"
