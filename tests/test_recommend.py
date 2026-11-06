@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import pytest
 
 from sidekick.config import ENV_VAR, Paths
@@ -328,6 +330,10 @@ def test_cli_prints_top(tmp_path, monkeypatch, capsys):
     assert "round 0  up-next 6" in out and "round 1  topic" in out and "snowball" in out
     assert "lecture context: same course ≤ 5" in out
     assert "top " in out and "18. Bayesian Statistics (cont.)" in out and "compute " in out
+    assert cli.main([CUR, "--cold", "--no-search"]) == 0
+    with Store.open(Paths(tmp_path)) as st:
+        triggers = [r[0] for r in st.conn.execute("SELECT trigger FROM computes ORDER BY rowid")]
+    assert triggers[-1] == "cli-cold" and triggers[0] == "cli"
 
 
 def test_person_name_trims_tails():
@@ -365,3 +371,11 @@ def test_lecture_context_same_course_not_redundant():
     assert order[1] == 3  # redundancy pushes the same-course lectures down
     order, _ = dv.mmr_select(scores, vecs, groups, k=3, cap=5, same_group_redundant=False)
     assert order == [0, 1, 3]  # same course isn't redundant; other courses still are
+
+
+def test_cold_skips_the_page_cache(store, tmp_path):
+    _, warm1 = run(store, tmp_path, min_pool=3, always_search=False)
+    _, warm2 = run(store, tmp_path, min_pool=3, always_search=False)
+    _, cold = run(store, tmp_path, min_pool=3, always_search=False, cache_ttl=timedelta(0))
+    assert warm2.pages_fetched == 1  # everything cached but the current page
+    assert cold.pages_fetched == warm1.pages_fetched > 1

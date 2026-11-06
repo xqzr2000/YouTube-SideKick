@@ -382,3 +382,13 @@ evidence from real pages comes from the owner's runs.
   back by the cap. The third, "Running A 5k", has his name only in its channel ("Chad
   Thornsberry - …"). **PR #28:** pool names are also matched against the channel when the title
   has none.
+- *Fourth run (#28): exactly 2 of the comedian's videos in the top 10, 5 more held back by the
+  cap.* The ranking caps are accepted.
+- **E3 tool (#29).** Compute time is almost all page fetches, and every compute already logs
+  pages and time, so E3 starts from the logs rather than a sweep of new requests. `just e3`
+  fits `seconds = a + b · pages` and uses the one-sided 95 % prediction bound, not the mean,
+  to find the most pages that fit in 90 s. That gives the largest enrichment budget, with the
+  typical and the worst-case search count. It then replays every logged `just recommend` at
+  budgets 10–30 and counts how many shown and labeled-good videos would have gone unenriched.
+  A few `just recommend <id> --cold` runs (page cache skipped, logged as `cli-cold`) check the
+  line where it matters, at the cold end.

@@ -24,6 +24,7 @@ from __future__ import annotations
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Any
 
 from sidekick.filters import thresholds as thmod
@@ -52,6 +53,7 @@ class Config:
     lam: float = dv.LAMBDA  # MMR: relevance vs. variety
     caps: dict[str, int] = field(default_factory=lambda: dict(dv.CAPS))
     snowball_from: int = 2  # best survivors whose up-next is added in rounds 2-3
+    cache_ttl: timedelta | None = None  # enrichment cache age; timedelta(0) = cold (E3)
 
 
 @dataclass
@@ -203,6 +205,7 @@ def recommend(
             sponsorblock=sponsorblock,
             detector=detector,
             cap=cap,
+            **({"ttl": cfg.cache_ttl} if cfg.cache_ttl is not None else {}),
             current_category=res.current.category if res.current else None,
             on_page=lambda vid, page: pool.upnext.__setitem__(vid, list(page.upnext)),
         )
