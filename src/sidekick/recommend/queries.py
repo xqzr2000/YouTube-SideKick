@@ -10,10 +10,19 @@
   current video's subject. Skipped when the topic query already contains the line's words
   (the two searches would return the same videos and only inflate recurrence).
 
-Rounds 2–3 (Rocchio expansion from the best survivors, snowball) come in the next PR.
+**Rounds 2–3** (only while fewer than ``min_pool`` videos survive and there's time left):
+
+- ``rocchio``: pseudo-relevance feedback. The topic query plus the 2 heaviest terms shared by
+  at least 2 of the best 3 survivors so far (their topic weights, averaged), e.g.
+  "tunnel turnaround Vancouver" + "massey replacement". No negative feedback.
+- snowball lists (not queries): the up-next lists of the best survivors whose watch pages this
+  compute already fetched during enrichment, so they cost no extra requests.
 """
 
 from __future__ import annotations
+
+from collections import Counter
+from collections.abc import Sequence
 
 from sidekick.topic import Topic
 from sidekick.topic import text as tx
@@ -43,3 +52,30 @@ def round1(anchor: Topic | None, mode: str, best_interest: str | None) -> list[t
         if q.casefold() != base.casefold():
             out.append((q, "interest_x"))
     return out
+
+
+def rocchio(
+    anchor: Topic | None, relevant: Sequence[Topic], *, n_terms: int = 2, min_docs: int = 2
+) -> str:
+    """The topic query expanded with terms the best survivors share; "" when nothing to add."""
+    if anchor is None or anchor.lead_source == "none" or not relevant:
+        return ""
+    base = anchor.query(4)
+    have = set(tx.tokens(base)) | set(anchor.weights)
+    mass: Counter[str] = Counter()
+    docs: Counter[str] = Counter()
+    surface: dict[str, str] = {}
+    for t in relevant:
+        total = sum(t.weights.values()) or 1.0
+        for tok, w in t.weights.items():
+            mass[tok] += w / total / len(relevant)
+            docs[tok] += 1
+            surface.setdefault(tok, t.surface.get(tok, tok))
+    new = [
+        tok
+        for tok, _ in mass.most_common()
+        if docs[tok] >= min_docs and tok not in have and tok not in tx.STOP
+    ][:n_terms]
+    if not new:
+        return ""
+    return " ".join([base, *(surface[t] for t in new)]).strip()

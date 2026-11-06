@@ -126,11 +126,14 @@ def run_stage_b(
     ttl: timedelta = ENRICH_TTL,
     lang_min_conf: float = LANG_MIN_CONF,
     current_category: str | None = None,
+    on_page=None,
 ) -> tuple[list[Decision], EnrichStats]:
     """Enrich survivors and decide. ``BlockedError`` propagates: the compute stops as blocked.
 
     ``current_category`` is the current video's YouTube category; a music context switches the
-    language rule off for every candidate.
+    language rule off for every candidate. ``on_page(video_id, page)`` is called for every
+    watch page fetched here (cache hits fetch nothing), so callers can reuse its up-next list
+    (snowball) without another request.
     """
     rules = profile.rules
     allowed = set(rules.languages)
@@ -152,7 +155,8 @@ def run_stage_b(
         else:
             cached = False
             try:
-                meta = fetcher.watch(c.video_id).meta
+                page = fetcher.watch(c.video_id)
+                meta = page.meta
             except PageCapReached:
                 capped = True
                 stats.over_cap += 1
@@ -169,6 +173,8 @@ def run_stage_b(
             stats.fetched += 1
             if store:
                 store.upsert_meta(meta)
+            if on_page is not None:
+                on_page(c.video_id, page)
 
         feats: dict[str, Any] = {
             "enriched": True,
