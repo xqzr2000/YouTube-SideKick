@@ -35,6 +35,7 @@ evidence from real pages comes from the owner's runs.
 | #22 | M4 | Topic anchor (lead story, entities, keyphrases), spaCy `en_core_web_sm`, `just topic` |
 | #23 | M4 | Topic anchor fixes from the first real run: show-name segments, channel tags, series outside news, places, `just topic --text` |
 | #24 | M4 | News context: Don't-show matches drop only non-news and commentary (pundit) titles; `just tune` ignores news-context labels for Don't-show |
+| #25 | M4 | `just recommend`: one full compute with backfill round 1, a cheap pre-score for the enrichment budget, v0 score, per-channel cap |
 
 ---
 
@@ -327,4 +328,24 @@ evidence from real pages comes from the owner's runs.
   Dems FLIP…") scored 0.36–0.40 and newscasts 0.00. `just tune` no longer counts news-context
   labels for the Don't-show threshold, so the good-labeled news reports can't switch the filter
   off everywhere else.
+
+**Back to the main path: `just recommend` (#25)**
+- *#24 checked on the news seed:* Kimmel dropped as non-news, MS NOW "Trump DOOMED the GOP" as
+  a pundit, CBC/CNN/CTV reports kept; `just tune` kept the Don't-show threshold at 0.20 and left
+  out 6 news-context labels.
+- **`sidekick.recommend`** runs one compute end to end: the up-next list through Stages A–C,
+  then, while fewer than `min_pool` (10) videos survive, a search round. The queries come from
+  the topic anchor, plus one crossed with the best Interests line in interest mode. Each round
+  ranks its Stage A survivors by a **cheap pre-score** (topic match on the title, how many lists
+  surfaced it, YouTube's position), so the enrichment budget (25 per compute) goes to the likely
+  picks. Everything that survives Stage C gets the **v0 score**: hand-set weights on topic
+  match, similarity to the current video (as a percentile within the pool), interest match (in
+  interest mode), recurrence, same channel, persistence across earlier computes and a weak views
+  term. A per-channel cap (3) stands in for MMR. The ranking is logged as decision stage `R`.
+- *Decisions:* percentiles rather than raw cosines, so e5's bunched-up scores and the TF-IDF
+  fallback share a scale; enrichment budget spent by pre-score rather than first-seen order,
+  because one search round with full enrichment took 85 s on the news seed; no interest-crossed
+  search when the topic query already contains the Interests line (it would repeat the same
+  results and inflate recurrence); query words keep their spelling ("Bayes rule", not the stem
+  "baye rule").
 

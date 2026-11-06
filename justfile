@@ -50,6 +50,12 @@ sim *args:
 db:
     uv run python -m sidekick.store.db
 
+# One full compute: filter up-next, search when too few survive, score, print the top 10
+# (e.g. `just recommend <id or watch URL>`, `just recommend <id> --backfill --show 20`)
+[positional-arguments]
+recommend *args:
+    uv run python -m sidekick.recommend "$@"
+
 # Show the topic anchor of a video and how its candidates match it
 # (e.g. `just topic`, `just topic <id or watch URL>`, `just topic <id> --k 30 --no-e5`)
 [positional-arguments]
