@@ -6,6 +6,7 @@ Examples::
     just recommend "https://www.youtube.com/watch?v=wQXdPZikag0" --show 20
     just recommend 5eW3gNkNsA8 --no-search         # up-next only (no search round)
     just recommend bFZ-0FH5hfs --min-pool 20 --enrich-cap 15
+    just recommend wQXdPZikag0 --cold                # skip the 24 h page cache (E3 timing)
 
 It fetches the watch page (signed out), filters the up-next list (Stages A–C), always runs one
 search round, adds rounds 2–3 (Rocchio query + snowball) only while fewer than ``--min-pool``
@@ -18,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import timedelta
 
 from sidekick.config import ensure_home
 from sidekick.features.lang import load_detector
@@ -80,6 +82,9 @@ def main(argv: list[str] | None = None) -> int:
         "--enrich-cap", type=int, default=Config.enrich_cap, help="enrichment budget per compute"
     )
     ap.add_argument("--no-search", action="store_true", help="up-next only, no search rounds")
+    ap.add_argument(
+        "--cold", action="store_true", help="ignore the 24 h page cache (logged as cli-cold)"
+    )
     ap.add_argument("--show", type=int, default=15, help="rows to print (top 10 + runners-up)")
     args = ap.parse_args(argv)
 
@@ -89,6 +94,8 @@ def main(argv: list[str] | None = None) -> int:
     cfg = Config(min_pool=args.min_pool, enrich_cap=args.enrich_cap)
     if args.no_search:
         cfg.max_rounds = 0
+    if args.cold:
+        cfg.cache_ttl = timedelta(0)
     with Store.open(paths) as store, Fetcher(FetchConfig(), paths=paths) as f, SponsorBlock() as sb:
         try:
             res = recommend(
@@ -100,6 +107,7 @@ def main(argv: list[str] | None = None) -> int:
                 detector=load_detector(paths),
                 paths=paths,
                 config=cfg,
+                trigger="cli-cold" if args.cold else "cli",
                 on_round=print_round,
             )
         except BlockedError as e:

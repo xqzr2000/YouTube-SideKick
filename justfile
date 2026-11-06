@@ -56,6 +56,12 @@ db:
 recommend *args:
     uv run python -m sidekick.recommend "$@"
 
+# E3: compute time vs pages fetched, the largest enrichment budget under 90 s, and what a
+# smaller budget costs on logged computes (`just e3 --md` for reports/E3-timing.md)
+[positional-arguments]
+e3 *args:
+    uv run python -m sidekick.e3 "$@"
+
 # Show the topic anchor of a video and how its candidates match it
 # (e.g. `just topic`, `just topic <id or watch URL>`, `just topic <id> --k 30 --no-e5`)
 [positional-arguments]

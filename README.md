@@ -15,7 +15,8 @@ On the surface, SideKick is a browser extension. At its core, it's a data scienc
 Early development (M1 done: parsers, polite fetcher, NB01; M2 done: profile, SQLite store,
 Stage A/B filters, enrichment, NB02; M3 done: hand labels, TF-IDF / LSA / e5 text
 representations, interest gate, Stage C soft filters, NB03, E1/E2; M4 in progress: the topic
-anchor, `just recommend` with the first backfill round and a v0 score). See `docs/` for setup:
+anchor, `just recommend` with backfill rounds, a v0 score and MMR with group caps, and E3
+timing). See `docs/` for setup:
 
 - [Windows 11 + Chrome + WSL2](docs/setup-windows-wsl2.md) (primary dev box)
 - [ChromeOS + Chrome + Crostini](docs/setup-chromeos.md)
@@ -32,8 +33,10 @@ compute), `just db` (what's in the database), `just label` (hand-label logged vi
 experiments), `just sim` (what the text representations find similar; `--eval` scores them against your
 labels), `just tune` (set the interest-gate and Stage C thresholds from your labels),
 `just topic <video-id>` (the topic anchor of a video and how its candidates match it).
-`just recommend <video-id>` runs one full compute (filters, a search round when too few videos
-survive, v0 score) and prints SideKick's top 10.
+`just recommend <video-id>` runs one full compute (filters, a search round, more rounds when
+too few videos survive, v0 score, MMR) and prints SideKick's top 10 (`--cold` skips the page
+cache). `just e3` fits compute time against pages fetched and works out the largest
+enrichment budget that stays under 90 s.
 
 ## Scraping disclaimer
 

@@ -9,7 +9,7 @@ sample.
 |---|---|---|
 | E1 | [Which text representation should the filters use?](E1-representations.md) | done (M3); follow-up E1b: context-relative Don't-show |
 | E2 | [Can the interest gate tell on-interest videos from the rest?](E2-interest-gate.md) | part 1 done (M3); part 2 in M4 |
-| E3 | Backfill rounds and `min_pool`: quality vs latency | M4 |
+| E3 | Backfill rounds and the enrichment budget: quality vs latency (`just e3`) | M4: tool built, report after the real runs |
 | E4 | Heuristic score vs learned ranker | M6 |
 | E5 | Taste drift: time-decay half-life | M7 |
 | E6 | Why does YouTube keep recommending X? | M7 |
