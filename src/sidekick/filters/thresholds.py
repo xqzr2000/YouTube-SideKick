@@ -39,12 +39,18 @@ DEFAULT_TEXT = {"clickbait": 0.80, "promo": 0.67}  # used until `just tune --wri
 # non-political video scored above 0.16. At 0.15 a stand-up clip was dropped on the floor alone.
 FLOORS = {"dont_show": 0.20, "downvoted": 0.25, "clickbait": 0.65, "promo": 0.34}
 
+# In a news context, a news-source candidate that matches a Don't-show line is dropped as a
+# pundit only if its title clickbait score reaches this (Stage C). Not tuned by `just tune`:
+# set from the 2026-11-05 news seed, where commentary titles scored 0.36-0.40 and newscasts 0.
+PUNDIT_CLICKBAIT = 0.30
+
 
 @dataclass
 class Thresholds:
     sim: dict[str, dict[str, float]] = field(default_factory=lambda: json.loads(_DS))
     clickbait: float = DEFAULT_TEXT["clickbait"]
     promo: float = DEFAULT_TEXT["promo"]
+    pundit_clickbait: float = PUNDIT_CLICKBAIT
     source: str = "defaults"  # "defaults" or the tuning timestamp
     notes: dict[str, Any] = field(default_factory=dict)
 
@@ -73,6 +79,7 @@ def load(paths: Paths | None = None) -> Thresholds:
         t.sim[rep] = {**t.sim.get(rep, {}), **{k: float(v) for k, v in vals.items()}}
     t.clickbait = float(raw.get("clickbait", t.clickbait))
     t.promo = float(raw.get("promo", t.promo))
+    t.pundit_clickbait = float(raw.get("pundit_clickbait", t.pundit_clickbait))
     t.source = str(raw.get("source", "file"))
     t.notes = raw.get("notes") or {}
     return t

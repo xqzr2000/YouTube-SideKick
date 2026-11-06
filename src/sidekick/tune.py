@@ -6,6 +6,12 @@ floor in ``thresholds.FLOORS``. So no video you called good would be dropped, an
 set can't make a filter trigger-happy. The gate τ is the midpoint between the lowest "yes" seed
 and the highest "no" seed (when they separate).
 
+Labels whose current video is **news** don't count for the Don't-show-me threshold: in a news
+context Stage C keeps news reports that match a Don't-show line and only drops non-news and
+commentary (see ``filters.stage_c``), so "PBS NewsHour, good" while watching news says nothing
+about where the line should sit elsewhere. Before 2026-11-05 those labels would have pushed the
+threshold to about 0.36 and switched the filter off almost everywhere.
+
 It prints, per signal: the old and new threshold, how many bad / meh / good labeled videos it
 would catch, and how many *unlabeled* Stage B survivors in the database it would drop (with a
 few titles), since that's where false removals would come from. ``--write`` saves the result
@@ -80,6 +86,7 @@ def tune(store: Store, profile, th: thmod.Thresholds, *, paths=None, e5=None):
         sim={k: dict(v) for k, v in th.sim.items()},
         clickbait=th.clickbait,
         promo=th.promo,
+        pundit_clickbait=th.pundit_clickbait,
         source=datetime.now(UTC).isoformat(timespec="seconds"),
         notes={},
     )
@@ -88,8 +95,14 @@ def tune(store: Store, profile, th: thmod.Thresholds, *, paths=None, e5=None):
     for sig in SIM_SIGNALS + TEXT_SIGNALS:
         key = FEATURE.get(sig, sig)
         old = cur[sig] if sig in SIM_SIGNALS else getattr(th, sig)
+        use = [
+            (v, lab, f)
+            for v, lab, f in scored
+            if not (sig == "dont_show" and f.get("news_context"))
+        ]
+        skipped = len(scored) - len(use)
         vals = {
-            lab: [f[key] for _, l2, f in scored if l2 == lab and f.get(key) is not None]
+            lab: [f[key] for _, l2, f in use if l2 == lab and f.get(key) is not None]
             for lab in ("good", "meh", "bad")
         }
         if not any(vals.values()):
@@ -101,7 +114,7 @@ def tune(store: Store, profile, th: thmod.Thresholds, *, paths=None, e5=None):
         totals = {lab: len(xs) for lab, xs in vals.items()}
         bad_titles = [
             (store.get_video(v) or {}).get("title", v)
-            for v, lab, f in scored
+            for v, lab, f in use
             if lab == "bad" and f.get(key) is not None and f[key] >= t
         ]
         pool_hits = sorted(
@@ -129,6 +142,7 @@ def tune(store: Store, profile, th: thmod.Thresholds, *, paths=None, e5=None):
                 "pool_n": len(pool),
                 "pool_hits": pool_hits[:4],
                 "pool_count": len(pool_hits),
+                "news_skipped": skipped,
             }
         )
     # gate
@@ -174,6 +188,11 @@ def _fmt(report, gate, rep) -> list[str]:
             f"good {c['good']}/{n['good']}; unlabeled survivors dropped "
             f"{r['pool_count']}/{r['pool_n']}"
         )
+        if r.get("news_skipped"):
+            lines.append(
+                f"             ({r['news_skipped']} labels from news contexts not used: there "
+                "Stage C keeps news reports and drops only non-news / commentary)"
+            )
         for t in r["bad_titles"]:
             lines.append(f"             bad caught:  {t[:70]}")
         for s, t in r["pool_hits"]:

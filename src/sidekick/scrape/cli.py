@@ -130,6 +130,11 @@ def print_stage_c(gate: GateResult, decisions: list[Decision], secs: float, stat
             f"{gate.best_interest!r}) -> {gate.mode} mode"
         )
     kept = sum(d.kept for d in decisions)
+    if decisions and decisions[0].features.get("news_context"):
+        print(
+            "news context: Don't-show matches drop only non-news and commentary titles "
+            "(pundit); news reports are kept"
+        )
     print(
         f"Stage C: kept {kept} of {len(decisions)}  ({gate.rep}; vectors "
         f"{stats.get('computed', 0)} computed, {stats.get('cached', 0)} cached, {secs:.1f} s)"
@@ -144,6 +149,8 @@ def print_stage_c(gate: GateResult, decisions: list[Decision], secs: float, stat
     for d in sorted(decisions, key=lambda d: (d.kept, -(d.features.get("dont_show_sim") or 0))):
         f = d.features
         status = "yes" if d.kept else f"NO {d.reason}"
+        if d.kept and f.get("dont_show_spared"):
+            status = "yes (news report)"
         print(
             f"  {d.video_id:<11}  {status[:22]:<22}  {n(f.get('dont_show_sim'))}  "
             f"{n(f.get('interest_sim'))}  {n(f.get('seed_sim'))}  {f['clickbait']:.2f} "
