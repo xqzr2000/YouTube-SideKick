@@ -202,3 +202,71 @@ def test_tune_cli_dry_run_and_write(tmp_path, monkeypatch, capsys):
     assert not (tmp_path / thmod.FILE_NAME).exists()
     assert tunemod.main(["--write"]) == 0
     assert thmod.load(Paths(tmp_path)).source != "defaults"
+
+
+# -- news context: news reports stay, pundits and late-night go (2026-11-05) ------------------
+
+NEWS = {
+    "NEWSSEED001": (
+        "Will there be a tunnel turnaround? | Metro News at Six",
+        "Metro News",
+        N := "News & Politics",
+    ),
+    "NEWSREPORT1": ("late night political show trump clip report", "Metro News", N),
+    "PUNDIT00001": ("🚨 late night political show TRUMP DOOMED!!!", "Pundit Now", N),
+    "LATENIGHT01": ("late night political show trump clip", "Late Show", "Entertainment"),
+}
+
+
+def test_news_context_keeps_reports_drops_pundits_and_late_night(store):
+    for vid, (title, chan, cat) in NEWS.items():
+        store.upsert_meta(VideoMeta(vid, title=title, channel=chan, category=cat))
+    store.commit()
+    sp = build_space(store, PROFILE, paths=Paths(store.path.parent))
+    th = thmod.Thresholds()
+    th.sim["tfidf"] = {"gate": 0.1, "dont_show": 0.05, "downvoted": 0.9}
+    th.clickbait = 1.01  # isolate the Don't-show / pundit rule
+    cands = [
+        Candidate(v, title=t, channel=c) for v, (t, c, _) in NEWS.items() if v != "NEWSSEED001"
+    ]
+    d = {
+        x.video_id: x
+        for x in run_stage_c(store, sp, cands, current_id="NEWSSEED001", thresholds=th)
+    }
+    assert d["NEWSREPORT1"].kept and d["NEWSREPORT1"].features["dont_show_spared"] == "news_report"
+    assert d["PUNDIT00001"].reasons == ["pundit:political late night show"]
+    assert d["LATENIGHT01"].reasons == ["dont_show:political late night show"]
+    assert d["LATENIGHT01"].features["cand_news"] == ""
+    # outside a news context the same report is dropped as before
+    (r,) = run_stage_c(store, sp, [cands[0]], current_id=SEED, thresholds=th)
+    assert r.reasons == ["dont_show:political late night show"] and "news_context" not in r.features
+
+
+def test_tune_ignores_news_context_labels_for_dont_show(store):
+    _labels(store)
+    store.upsert_meta(
+        VideoMeta(
+            "NEWSSEED001",
+            title="Story | Metro News at Six",
+            channel="Metro News",
+            category="News & Politics",
+        )
+    )
+    store.upsert_meta(
+        VideoMeta(
+            "NEWSREPORT1",
+            title="late night political show trump clip report",
+            channel="Metro News",
+            category="News & Politics",
+        )
+    )
+    c2 = store.start_compute("NEWSSEED001", trigger="cli")
+    store.log_candidates(c2, [Candidate("NEWSREPORT1")], source="upnext")
+    store.add_label("NEWSREPORT1", "good", compute_id=c2)
+    store.commit()
+    _, _, report, _ = tunemod.tune(
+        store, PROFILE, thmod.Thresholds(), paths=Paths(store.path.parent)
+    )
+    ds = {r["signal"]: r for r in report}["dont_show"]
+    assert ds["news_skipped"] == 1 and ds["caught"]["bad"] >= 1  # the news "good" didn't raise it
+    assert ds["totals"]["good"] == 2

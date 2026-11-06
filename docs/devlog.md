@@ -34,6 +34,7 @@ evidence from real pages comes from the owner's runs.
 | #21 | M3 | …and not in a music context either (current video is Music), for concerts filed under Entertainment |
 | #22 | M4 | Topic anchor (lead story, entities, keyphrases), spaCy `en_core_web_sm`, `just topic` |
 | #23 | M4 | Topic anchor fixes from the first real run: show-name segments, channel tags, series outside news, places, `just topic --text` |
+| #24 | M4 | News context: Don't-show matches drop only non-news and commentary (pundit) titles; `just tune` ignores news-context labels for Don't-show |
 
 ---
 
@@ -310,4 +311,20 @@ evidence from real pages comes from the owner's runs.
     "in <span>"; the query is now "tunnel turnaround Vancouver".
   - `just topic <id> --text` shows how each title segment, description line and tag was read,
     to check the cleaning on real pages.
+
+**Closing the news problem (#24)**
+- *A search on the topic query mostly found the wrong thing.* "tunnel turnaround Vancouver" returned
+  general tunnel videos, most of them years old; the two clips about the actual story were
+  under the 3-minute minimum. The headline is a pun and CTV's description is pure boilerplate,
+  so the words that name the story never appear in the video's own text.
+- *Decision (owner): stop there.* The goal was never to solve news, only to stop a news video
+  from being followed by commentary and pundits, and to stop news reports being dropped as
+  "political". The topic anchor stays as built: a ranking feature and a query source for M4.
+- **PR #24:** when the current video is news, a Don't-show-me match drops a candidate only if it
+  isn't news itself (late-night shows are filed under Entertainment) or its title reads like
+  commentary (clickbait ≥ 0.30, reason `pundit:<line>`). On that compute, commentary titles
+  ("Trump DOOMED the GOP", "BREAKING: MAJOR UPDATE on FINAL Senate races", "ELECTION UPDATE:
+  Dems FLIP…") scored 0.36–0.40 and newscasts 0.00. `just tune` no longer counts news-context
+  labels for the Don't-show threshold, so the good-labeled news reports can't switch the filter
+  off everywhere else.
 

@@ -24,6 +24,15 @@ and logged; backfill (M4) is what acts on it.
 
 Every score is logged as a feature whether it drops the video or not, so thresholds can be
 re-tuned from the log without re-running anything.
+
+**News context** (decided 2026-11-05, Russell: while watching news, show news, not pundits).
+When the current video is news (:func:`sidekick.topic.news_context`: YouTube category
+"News & Politics" or "news" in the channel/title), a Don't-show-me match only drops a candidate
+that is **not itself news** (late-night shows are filed under Entertainment) or whose title
+reads like **commentary** (clickbait ≥ ``thresholds.PUNDIT_CLICKBAIT``; reason ``pundit:<line>``).
+Straight news reports are kept and marked ``dont_show_spared = "news_report"``. On 2026-11-05
+real titles, pundit channels scored clickbait 0.36–0.40 ("Trump DOOMED the GOP", "BREAKING:
+MAJOR UPDATE…") and newscasts 0.00. Outside a news context nothing changes.
 """
 
 from __future__ import annotations
@@ -43,6 +52,7 @@ from sidekick.filters.thresholds import Thresholds
 from sidekick.models import Candidate
 from sidekick.profile.parser import Profile
 from sidekick.store.db import Store
+from sidekick.topic import news_context
 
 STAGE = "C"
 MIN_CACHED_FOR_MEAN = 20  # below this, the mean comes from the vectors at hand
@@ -181,8 +191,10 @@ def run_stage_c(
     ids = [c.video_id for c in survivors]
     raw, cen = space.videos(store, ids)
     cur_raw = None
-    if current_id and store.get_video(current_id) is not None:
+    cur = store.get_video(current_id) if current_id else None
+    if cur is not None:
         cur_raw = space.videos(store, [current_id])[0][0]
+    news = news_context(cur) if cur else ""
     out = []
     for i, c in enumerate(survivors):
         v = store.get_video(c.video_id) or {}
@@ -204,8 +216,17 @@ def run_stage_c(
         pr, pr_groups = promo(v.get("description") or "")
         feats.update(clickbait=cb, clickbait_parts=cb_parts, promo=pr, promo_groups=pr_groups)
 
+        if news:
+            feats["news_context"] = news
+            feats["cand_news"] = news_context(v or {"title": c.title, "channel": c.channel})
         if ds is not None and ds >= th["dont_show"]:
-            reasons.append(f"dont_show:{space.dont_show[dj][:40]}")
+            line = space.dont_show[dj][:40]
+            if not news or not feats["cand_news"]:
+                reasons.append(f"dont_show:{line}")
+            elif cb >= thresholds.pundit_clickbait:
+                reasons.append(f"pundit:{line}")
+            else:
+                feats["dont_show_spared"] = "news_report"
         if dv is not None and dv >= th["downvoted"]:
             reasons.append("like_downvoted")
         if cb >= thresholds.clickbait:
