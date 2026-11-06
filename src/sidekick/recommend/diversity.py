@@ -15,7 +15,9 @@ got through a cap of 2): spaCy returns the name with different tails depending o
 ("Chad Thornsberry - Full Special", "Chad Thornsberry Stand"), so each entity is cut to its
 leading capitalized name words (2–3, stopping at words like Full / Special / Stand / Comedy).
 Every name found anywhere in the pool is then looked up in *every* title, so a title where
-spaCy found nothing still joins its performer's group.
+spaCy found nothing still joins its performer's group, and then in the channel name, so an
+upload with the name only in its channel ("Running A 5k" on "Chad Thornsberry - Topic", third
+real run) joins it too.
 
 Within the caps, **maximal marginal relevance** picks greedily::
 
@@ -91,8 +93,8 @@ def assign_groups(
     titles: Sequence[str], channels: Sequence[str], kind: str, tagger: Tagger | None
 ) -> list[str]:
     """Diversity group per candidate: the channel in a lecture context; elsewhere the performer
-    (a name found in any title of the pool and present in this one, longest first), else the
-    channel."""
+    (a name found in any title of the pool and present in this title, longest first, or failing
+    that in this channel, e.g. "Chad Thornsberry - Topic"), else the channel."""
     if kind == "lecture" or tagger is None:
         return [f"channel:{c.casefold()}" for c in channels]
     found = [_names_in(t, tagger) for t in titles]
@@ -100,7 +102,9 @@ def assign_groups(
     pats = [(n, re.compile(rf"\b{re.escape(n)}\b", re.I)) for n in known]
     out = []
     for t, c in zip(titles, channels, strict=True):
-        hit = next((n for n, rx in pats if rx.search(t)), None)
+        hit = next((n for n, rx in pats if rx.search(t)), None) or next(
+            (n for n, rx in pats if rx.search(c)), None
+        )
         out.append(f"person:{hit}" if hit else f"channel:{c.casefold()}")
     return out
 

@@ -345,11 +345,14 @@ def test_assign_groups_matches_names_across_the_pool():
         "I Tried To Run A 5K | Chad Thornsberry - Full Special",
         "Fine Dining And Utter Nonsense. Chad Thornsberry",
         "Pulling Over A Cop",
+        "Running A 5k",  # name only in the channel
     ]
-    g = dv.assign_groups(
-        titles, ["Dry Bar Clips", "Dry Bar Comedy", "Dry Bar Comedy"], "other", OnlyFirst()
-    )
-    assert g == ["person:chad thornsberry"] * 2 + ["channel:dry bar comedy"]
+    channels = ["Dry Bar Clips", "Dry Bar Comedy", "Dry Bar Comedy", "Chad Thornsberry - Topic"]
+    g = dv.assign_groups(titles, channels, "other", OnlyFirst())
+    assert g == ["person:chad thornsberry"] * 2 + [
+        "channel:dry bar comedy",
+        "person:chad thornsberry",
+    ]
 
 
 def test_lecture_context_same_course_not_redundant():
