@@ -75,6 +75,7 @@ class Topic:
     entity_tokens: set[str] = field(default_factory=set)
     series: list[str] = field(default_factory=list)
     places: list[str] = field(default_factory=list)  # news only: GPE/LOC in title / channel
+    surface: dict[str, str] = field(default_factory=dict)  # normalized token -> word as written
     is_news: bool = False
     news_reason: str = ""
     published_at: str | None = None
@@ -106,7 +107,7 @@ class Topic:
         for phrase, _ in self.keyphrases:
             for n in phrase.split():
                 if n not in seen:
-                    words.append(n)
+                    words.append(self.surface.get(n, n))  # "rule", not the stem "baye"
                     seen.add(n)
         return " ".join((words[:budget] + place_words)[:max_words])
 
@@ -364,6 +365,9 @@ def extract(ctx: TopicContext, video: dict[str, Any] | str) -> Topic | None:
         if toks and toks not in phrases:  # mean weight × √length: multiword, not just long
             phrases[toks] = sum(weights.get(t, 0.0) for t in toks) / len(toks) ** 0.5
     keyphrases = sorted(((" ".join(k), round(s, 2)) for k, s in phrases.items()), key=_by_score)
+    surface: dict[str, str] = {}
+    for w in re.findall(r"[^\W_]+(?:['’.-][^\W_]+)*", tx.DATE_RE.sub(" ", lead)):
+        surface.setdefault(tx.norm_token(w), w.strip(".'’-"))
 
     return Topic(
         video_id=v["video_id"],
@@ -377,6 +381,7 @@ def extract(ctx: TopicContext, video: dict[str, Any] | str) -> Topic | None:
         entity_tokens=ent_tokens,
         series=sorted(ch.template),
         places=places[:3],
+        surface=surface,
         is_news=is_news,
         news_reason=reason,
         published_at=v.get("published_at"),
