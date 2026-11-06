@@ -37,6 +37,7 @@ evidence from real pages comes from the owner's runs.
 | #24 | M4 | News context: Don't-show matches drop only non-news and commentary (pundit) titles; `just tune` ignores news-context labels for Don't-show |
 | #25 | M4 | `just recommend`: one full compute with backfill round 1, a cheap pre-score for the enrichment budget, v0 score, per-channel cap |
 | #26 | M4 | Round 1 always searches; rounds 2–3 (Rocchio + snowball) under a deadline; MMR with group caps (same course ≤ 5, same performer/show ≤ 2) |
+| #27 | M4 | Fix the caps: performer names trimmed and matched across the pool; same-course lectures not redundant in MMR |
 
 ---
 
@@ -366,4 +367,11 @@ evidence from real pages comes from the owner's runs.
   enrichment already fetched, so no extra requests); MMR (λ = 0.75, centered vectors) with the
   group caps in place of the per-channel cap. The group is the channel in a lecture context,
   else the person named in the title (spaCy PERSON) or the channel.
+- *Second real run (#26, warm cache, search always on): 48.6 s, 42.4 s, 32.2 s.* Two caps didn't
+  hold. **Dry Bar:** 6 of the top 10 were the same comedian, because spaCy returned his name with
+  varying tails ("Chad Thornsberry - Full Special", "… Stand") or not at all, so each variant was
+  its own group. **Chi Jin:** only 3 course lectures, not up to 5, because MMR counted lectures
+  of the same course as near-duplicates. **PR #27:** entity names are cut to their leading
+  capitalized name words, and every name found in the pool is matched in every title; in a
+  lecture context MMR measures redundancy only against other courses.
 

@@ -328,3 +328,37 @@ def test_cli_prints_top(tmp_path, monkeypatch, capsys):
     assert "round 0  up-next 6" in out and "round 1  topic" in out and "snowball" in out
     assert "lecture context: same course ≤ 5" in out
     assert "top " in out and "18. Bayesian Statistics (cont.)" in out and "compute " in out
+
+
+def test_person_name_trims_tails():
+    assert dv.person_name("Chad Thornsberry - Full Special") == "chad thornsberry"
+    assert dv.person_name("Chad Thornsberry Stand") == "chad thornsberry"
+    assert dv.person_name("Trump") == "" and dv.person_name("the band") == ""
+
+
+def test_assign_groups_matches_names_across_the_pool():
+    class OnlyFirst(FakeTagger):  # NER finds the name in one title only
+        def entities(self, text):
+            return [Entity("Chad Thornsberry - Full Special", "PERSON")] if "5K" in text else []
+
+    titles = [
+        "I Tried To Run A 5K | Chad Thornsberry - Full Special",
+        "Fine Dining And Utter Nonsense. Chad Thornsberry",
+        "Pulling Over A Cop",
+    ]
+    g = dv.assign_groups(
+        titles, ["Dry Bar Clips", "Dry Bar Comedy", "Dry Bar Comedy"], "other", OnlyFirst()
+    )
+    assert g == ["person:chad thornsberry"] * 2 + ["channel:dry bar comedy"]
+
+
+def test_lecture_context_same_course_not_redundant():
+    import numpy as np
+
+    vecs = np.array([[1, 0], [0.99, 0.14], [0.98, 0.2], [0, 1]], dtype=np.float32)
+    vecs /= np.linalg.norm(vecs, axis=1, keepdims=True)
+    scores, groups = [0.9, 0.8, 0.7, 0.75], ["c", "c", "c", "other"]
+    order, _ = dv.mmr_select(scores, vecs, groups, k=3, cap=5)
+    assert order[1] == 3  # redundancy pushes the same-course lectures down
+    order, _ = dv.mmr_select(scores, vecs, groups, k=3, cap=5, same_group_redundant=False)
+    assert order == [0, 1, 3]  # same course isn't redundant; other courses still are

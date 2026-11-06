@@ -382,15 +382,21 @@ def _rank(store, pool: _Pool, anchor, res: Result, cfg: Config, tagger, cid, vid
     rows.sort(key=lambda r: (-r.score, r.candidate.video_id))
     ids = [r.candidate.video_id for r in rows]
     vecs = space.videos(store, ids)[1] if space is not None else None
-    groups = []
+    titles, channels = [], []
     for r in rows:
         meta = store.get_video(r.candidate.video_id) or {}
-        title = meta.get("title") or r.candidate.title
-        channel = meta.get("channel") or r.candidate.channel
-        groups.append(dv.group_key(title, channel, res.kind, tagger))
+        titles.append(meta.get("title") or r.candidate.title)
+        channels.append(meta.get("channel") or r.candidate.channel)
+    groups = dv.assign_groups(titles, channels, res.kind, tagger)
     cap = cfg.caps.get(res.kind, cfg.caps.get("other", 2))
     order, info = dv.mmr_select(
-        [r.score for r in rows], vecs, groups, k=cfg.top_k, cap=cap, lam=cfg.lam
+        [r.score for r in rows],
+        vecs,
+        groups,
+        k=cfg.top_k,
+        cap=cap,
+        lam=cfg.lam,
+        same_group_redundant=res.kind != "lecture",
     )
     for k, i in enumerate(order, 1):
         rows[i].rank = k
