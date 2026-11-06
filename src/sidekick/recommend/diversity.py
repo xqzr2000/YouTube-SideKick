@@ -10,12 +10,21 @@ Decided 2026-11-05 (Russell), after the first real ``just recommend`` runs:
   person named in the title when there is one (spaCy PERSON), else the channel, so a comedian
   posting through two channels (Dry Bar Clips, Dry Bar Comedy) still counts once.
 
+**Finding the performer** (fixed after the second real run, where 6 videos of one comedian
+got through a cap of 2): spaCy returns the name with different tails depending on the title
+("Chad Thornsberry - Full Special", "Chad Thornsberry Stand"), so each entity is cut to its
+leading capitalized name words (2–3, stopping at words like Full / Special / Stand / Comedy).
+Every name found anywhere in the pool is then looked up in *every* title, so a title where
+spaCy found nothing still joins its performer's group.
+
 Within the caps, **maximal marginal relevance** picks greedily::
 
     mmr = λ · v0 − (1 − λ) · max similarity to what's already picked      (λ = 0.75)
 
 with centered e5 (or TF-IDF) vectors, where near-duplicates score high and unrelated videos
-near 0. If the caps leave slots empty (a pool that is all one course), the best capped videos
+near 0. In a lecture context, lectures of the *same course* don't count as redundant with each
+other (they are different lectures, and you want up to 5 of them); the penalty applies across
+courses. If the caps leave slots empty (a pool that is all one course), the best capped videos
 fill them, so a list is never shorter than it has to be.
 """
 
@@ -45,18 +54,61 @@ def context_kind(category: str | None, title: str | None) -> str:
     return "other"
 
 
-def group_key(title: str, channel: str, kind: str, tagger: Tagger | None) -> str:
-    """The diversity group of a candidate: its channel in a lecture context, else the person
-    named in its title (when there is one) or its channel."""
-    if kind == "lecture" or tagger is None:
-        return f"channel:{channel.casefold()}"
+NAME_STOP = frozenset(
+    """
+    full special specials stand standup stand-up comedy comedian live show shows double
+    feature best official clips clip dry bar the of and ft feat vs podcast interview
+    highlights episode part new set tour hour
+    """.split()
+)
+_NAME_WORD_RE = re.compile(r"^[A-Z][\w'’.-]*$")
+
+
+def person_name(text: str) -> str:
+    """ "Chad Thornsberry - Full Special" → "chad thornsberry"; "" unless 2+ name words."""
+    words = []
+    for w in re.split(r"[\s|•·:,()\[\]\-–—]+", tx.strip_entity(text)):
+        if not w:
+            continue
+        if not _NAME_WORD_RE.match(w) or w.casefold() in NAME_STOP or len(words) == 3:
+            break
+        words.append(w.strip(".'’").casefold())
+    return " ".join(words) if len(words) >= 2 else ""  # "Chad Thornsberry", not a lone "Trump"
+
+
+def _names_in(title: str, tagger: Tagger) -> list[str]:
+    out = []
     for seg in tx.title_segments(title):
         for e in tagger.entities(seg):
             if e.label == "PERSON":
-                name = " ".join(tx.strip_entity(e.text).casefold().split())
-                if len(name.split()) >= 2:  # "Chad Thornsberry", not a lone "Trump"
-                    return f"person:{name}"
-    return f"channel:{channel.casefold()}"
+                n = person_name(e.text)
+                if n:
+                    out.append(n)
+    return out
+
+
+def assign_groups(
+    titles: Sequence[str], channels: Sequence[str], kind: str, tagger: Tagger | None
+) -> list[str]:
+    """Diversity group per candidate: the channel in a lecture context; elsewhere the performer
+    (a name found in any title of the pool and present in this one, longest first), else the
+    channel."""
+    if kind == "lecture" or tagger is None:
+        return [f"channel:{c.casefold()}" for c in channels]
+    found = [_names_in(t, tagger) for t in titles]
+    known = sorted({n for ns in found for n in ns}, key=lambda n: (-len(n), n))
+    pats = [(n, re.compile(rf"\b{re.escape(n)}\b", re.I)) for n in known]
+    out = []
+    for t, c in zip(titles, channels, strict=True):
+        hit = next((n for n, rx in pats if rx.search(t)), None)
+        out.append(f"person:{hit}" if hit else f"channel:{c.casefold()}")
+    return out
+
+
+def group_key(title: str, channel: str, kind: str, tagger: Tagger | None) -> str:
+    """One candidate's group (see :func:`assign_groups`, which also matches names across the
+    pool)."""
+    return assign_groups([title], [channel], kind, tagger)[0]
 
 
 def mmr_select(
@@ -67,8 +119,11 @@ def mmr_select(
     k: int,
     cap: int,
     lam: float = LAMBDA,
+    same_group_redundant: bool = True,
 ) -> tuple[list[int], dict[int, dict]]:
-    """Indices in pick order, plus per-index info (``mmr``, ``redundancy``, ``capped``)."""
+    """Indices in pick order, plus per-index info (``mmr``, ``redundancy``, ``capped``).
+    ``same_group_redundant=False`` (lecture context) measures redundancy only against picks
+    from other groups."""
     n = len(scores)
     order: list[int] = []
     info: dict[int, dict] = {}
@@ -82,7 +137,18 @@ def mmr_select(
             if count[groups[i]] >= cap:
                 capped.add(i)
                 continue
-            red = max((float(sims[i, j]) for j in order), default=0.0) if sims is not None else 0.0
+            red = (
+                max(
+                    (
+                        float(sims[i, j])
+                        for j in order
+                        if same_group_redundant or groups[j] != groups[i]
+                    ),
+                    default=0.0,
+                )
+                if sims is not None
+                else 0.0
+            )
             val = lam * scores[i] - (1 - lam) * max(0.0, red)
             if val > best_val + 1e-12:
                 best, best_val, best_red = i, val, red
