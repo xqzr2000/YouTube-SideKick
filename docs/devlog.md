@@ -375,3 +375,10 @@ evidence from real pages comes from the owner's runs.
   capitalized name words, and every name found in the pool is matched in every title; in a
   lecture context MMR measures redundancy only against other courses.
 
+- *Third real run (#27, warm cache): 21.5 s and 39.8 s.* **Chi Jin:** the 3 course lectures in
+  the pool all made the top 10, and no hidden candidate scored above 0.49, so 3 is what the pool
+  had; the cap of 5 no longer holds them back. **Dry Bar:** 3 of the comedian's videos were in
+  the top 10, against a cap of 2. Two came from the title-name match, and five more were held
+  back by the cap. The third, "Running A 5k", has his name only in its channel ("Chad
+  Thornsberry - …"). **PR #28:** pool names are also matched against the channel when the title
+  has none.
