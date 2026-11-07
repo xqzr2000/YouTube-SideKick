@@ -1,0 +1,178 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #0f0f0f;
+  --muted: #606060;
+  --line: #e5e5e5;
+  --hover: #f2f2f2;
+  --accent: #065fd4;
+  --error: #b3261e;
+  font: 13px/1.35 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f0f0f;
+    --fg: #f1f1f1;
+    --muted: #aaaaaa;
+    --line: #303030;
+    --hover: #222222;
+    --accent: #3ea6ff;
+    --error: #f2b8b5;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+h1 {
+  margin: 0;
+  font-size: 14px;
+}
+.current {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+#refresh,
+.note button[type='submit'] {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: transparent;
+  padding: 4px 12px;
+}
+#refresh:hover {
+  background: var(--hover);
+}
+button.link {
+  border: 0;
+  background: none;
+  color: var(--accent);
+  padding: 0 4px;
+}
+main {
+  padding: 8px 8px 0;
+}
+.status:empty {
+  display: none;
+}
+.status {
+  padding: 8px 4px;
+  color: var(--muted);
+}
+.status.error {
+  color: var(--error);
+}
+.progress-head {
+  margin: 0 0 4px;
+  color: var(--fg);
+}
+.steps {
+  margin: 0;
+  padding-left: 18px;
+}
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  border-radius: 8px;
+}
+.card:hover {
+  background: var(--hover);
+}
+.card .open {
+  display: flex;
+  gap: 8px;
+  padding: 6px 4px;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+.thumb {
+  flex: none;
+  width: 140px;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--line);
+}
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.title {
+  font-weight: 600;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.sub {
+  color: var(--muted);
+  font-size: 12px;
+}
+.down {
+  border: 0;
+  background: none;
+  padding: 8px 6px;
+  opacity: 0.45;
+}
+.card:hover .down,
+.card.noting .down {
+  opacity: 1;
+}
+.note {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 0 4px 8px;
+}
+.note textarea {
+  flex: 1 1 100%;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px;
+}
+.note .msg {
+  color: var(--muted);
+  font-size: 12px;
+}
+.card.downvoted .open {
+  opacity: 0.45;
+}
+footer {
+  padding: 8px 12px 12px;
+  text-align: right;
+}

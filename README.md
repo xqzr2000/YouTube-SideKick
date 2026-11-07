@@ -52,6 +52,14 @@ enrichment budget that stays under 90 s ([E3 report](reports/E3-timing.md)).
 Computes run one at a time. A request for another video waits in a queue, and a newer request
 replaces the waiting one.
 
+**Chrome extension (M5, `extension/`, WXT + TypeScript):** the right-click menu **SideKick's
+Selection** (or the toolbar icon) opens a side panel. The panel reads the video and its
+signed-in up-next list from the tab, shows progress while the backend computes, then shows 10
+cards. A click plays the video in the same tab and recomputes; 👎 asks for a note that goes
+into your profile. To build and load it, see section 7 of
+[the WSL2 setup](docs/setup-windows-wsl2.md#7-the-chrome-extension-sidekicks-selection-m5)
+(`just ext-install`, `just ext-win`).
+
 ## Scraping disclaimer
 
 SideKick fetches public YouTube pages for personal, low-volume use (polite delays, a per-run

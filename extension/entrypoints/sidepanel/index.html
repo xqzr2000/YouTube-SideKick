@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SideKick's Selection</title>
+  </head>
+  <body>
+    <header>
+      <div class="heading">
+        <h1>SideKick's Selection</h1>
+        <p id="current" class="current"></p>
+      </div>
+      <button id="refresh" type="button" title="Run a new compute for this video">Refresh</button>
+    </header>
+    <main>
+      <section id="status" class="status" aria-live="polite"></section>
+      <ol id="cards" class="cards"></ol>
+    </main>
+    <footer>
+      <button id="settings" type="button" class="link">Settings</button>
+    </footer>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
