@@ -421,3 +421,27 @@ evidence from real pages comes from the owner's runs.
 - **Decision: v0 ships as the M5 ranker, and M4 is closed.** No hand-tuning on 7 seeds; the
   M6 learned ranker sets the weights from these labels plus panel clicks. Write-up:
   `reports/E4-ranker.md`.
+
+## Session 7, continued — M5 starts: the backend API
+
+- **Three decisions for M5 (Russell):**
+  - start from **both up-next lists**: the signed-in list the extension reads from the tab,
+    and the signed-out list on the page the backend fetches anyway (no extra requests, and a
+    video in both gets the recurrence credit);
+  - show **progress steps** while a compute runs;
+  - after a **card click**, recompute for the new video automatically (other navigation
+    doesn't trigger a compute).
+- **PR #32: backend API.**
+  - `POST /computes` starts a background job and returns at once. The panel polls
+    `GET /computes/{job_id}` for steps ("Up-next: checking videos (7 fetched)",
+    "Searching “…”", "Ranking") and then the 10 cards (midpoint thumbnail, title, channel,
+    duration).
+  - Computes run one at a time. A request for the running video joins it; one for another
+    video is queued, and a newer request replaces the queued one, so fast clicking computes
+    only the last.
+  - `POST /feedback` takes clicks and 👎. A 👎 needs a note, which is appended to `profile.md`
+    with the video's title and channel.
+  - The shown 10 are logged as impressions. The tab's up-next is logged as `source = tab`.
+  - Without a video id, the API falls back to the last video SideKick computed for; with no
+    history it returns `empty`.
+- `just e3` now fits on panel computes too (any trigger except the synthetic sample).

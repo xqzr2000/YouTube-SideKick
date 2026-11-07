@@ -94,7 +94,7 @@ def timing_rows(store: Store) -> list[dict]:
                           AND d.stage = 'R') AS ranked
            FROM computes c
            WHERE c.status = 'ok' AND c.pages_fetched IS NOT NULL AND c.duration_ms IS NOT NULL
-             AND c.trigger LIKE 'cli%'
+             AND c.trigger != 'sample'
            ORDER BY c.ts"""
     ).fetchall()
     return [

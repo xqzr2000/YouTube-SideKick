@@ -41,6 +41,17 @@ enrichment budget that stays under 90 s ([E3 report](reports/E3-timing.md)).
 `just label --top10` labels SideKick's top 10 and YouTube's first 10 up-next, mixed, and
 `just label --stats` then compares their precision@10.
 
+**Backend API (M5, for the side panel; `just dev` serves it on port 8000):**
+- `POST /computes` starts a compute. Body: `{"video_id", "upnext": [...], "trigger"}`, where
+  `upnext` is the signed-in list from the open tab. It returns a job to poll.
+- `GET /computes/{job_id}` reports progress steps, then the 10 cards. `GET /computes/latest`
+  returns the running or newest job.
+- `POST /feedback` records a `click` or a `downvote`. A downvote needs a note, which is
+  appended to `profile.md`.
+
+Computes run one at a time. A request for another video waits in a queue, and a newer request
+replaces the waiting one.
+
 ## Scraping disclaimer
 
 SideKick fetches public YouTube pages for personal, low-volume use (polite delays, a per-run
