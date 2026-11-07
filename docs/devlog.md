@@ -410,3 +410,14 @@ evidence from real pages comes from the owner's runs.
   up-next (current video, Shorts, live and premieres skipped), mixed and unmarked, so neither
   list is recognizable. P@10 is good ÷ labeled, with the bad share alongside. YouTube's own
   list is the baseline that SideKick has to beat.
+- **E4 part 1: SideKick vs YouTube's up-next.** 7 seeds, both top-10 lists labeled blind (140
+  entries, 23 in both lists). SideKick: **66 % good, 14 % bad**. YouTube's first 10 up-next:
+  49 % good, 31 % bad. That's +17 points [+6, +29] by bootstrap over seeds; SideKick is ahead
+  on 5 seeds, tied on 2 and never behind. Lectures gain the most (+40 points). Weak spots:
+  - the chemometrics talk (10 % good): YouTube's off-topic junk is replaced by generic PCA
+    explainers, labeled meh, because topic outweighs interest in the v0 weights;
+  - the newscast (60 % bad): national politics leaks through, as expected under the news
+    scope.
+- **Decision: v0 ships as the M5 ranker, and M4 is closed.** No hand-tuning on 7 seeds; the
+  M6 learned ranker sets the weights from these labels plus panel clicks. Write-up:
+  `reports/E4-ranker.md`.

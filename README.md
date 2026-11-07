@@ -14,9 +14,10 @@ On the surface, SideKick is a browser extension. At its core, it's a data scienc
 
 Early development (M1 done: parsers, polite fetcher, NB01; M2 done: profile, SQLite store,
 Stage A/B filters, enrichment, NB02; M3 done: hand labels, TF-IDF / LSA / e5 text
-representations, interest gate, Stage C soft filters, NB03, E1/E2; M4 in progress: the topic
-anchor, `just recommend` with backfill rounds, a v0 score and MMR with group caps, and E3
-timing). See `docs/` for setup:
+representations, interest gate, Stage C soft filters, NB03, E1/E2; M4 done: the topic
+anchor, `just recommend` with backfill rounds, a v0 score and MMR with group caps, E3 timing,
+and E4 part 1: SideKick's top 10 at 66 % good vs 49 % for YouTube's up-next; M5 next: the
+backend API and the Chrome extension). See `docs/` for setup:
 
 - [Windows 11 + Chrome + WSL2](docs/setup-windows-wsl2.md) (primary dev box)
 - [ChromeOS + Chrome + Crostini](docs/setup-chromeos.md)
