@@ -36,7 +36,9 @@ labels), `just tune` (set the interest-gate and Stage C thresholds from your lab
 `just recommend <video-id>` runs one full compute (filters, a search round, more rounds when
 too few videos survive, v0 score, MMR) and prints SideKick's top 10 (`--cold` skips the page
 cache). `just e3` fits compute time against pages fetched and works out the largest
-enrichment budget that stays under 90 s.
+enrichment budget that stays under 90 s ([E3 report](reports/E3-timing.md)).
+`just label --top10` labels SideKick's top 10 and YouTube's first 10 up-next, mixed, and
+`just label --stats` then compares their precision@10.
 
 ## Scraping disclaimer
 
