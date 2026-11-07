@@ -98,3 +98,31 @@ fetch *args:
 # for NB02 filters, `just nb notebooks/03_representations.py` for NB03 representations)
 nb notebook="notebooks/01_candidates.py":
     uv run --group nb marimo edit --headless {{notebook}}
+
+# --- Chrome extension (M5). Needs Node 22+ in this Linux environment (docs/setup-*.md) ---
+
+# Install the extension's dependencies (once, and after package changes)
+ext-install:
+    cd extension && npm ci
+
+# Typecheck and unit-test the extension
+ext-test:
+    cd extension && npm run typecheck && npm test
+
+# Build the extension into extension/.output/chrome-mv3
+ext-build:
+    cd extension && npm run build
+    @echo "Built: extension/.output/chrome-mv3 (WSL2: run 'just ext-win' to copy it where Windows Chrome can load it)"
+
+# WSL2 only: build, then copy the extension to a Windows folder (default %USERPROFILE%\SideKick-extension)
+[positional-arguments]
+ext-win *dest: ext-build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    win_home="$(wslpath "$(cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')")"
+    dest="${1:-$win_home/SideKick-extension}"
+    rm -rf "$dest" && cp -r extension/.output/chrome-mv3 "$dest"
+    echo "Copied to $(wslpath -w "$dest")"
+    echo "First time: chrome://extensions -> Developer mode -> Load unpacked -> that folder."
+    echo "After a rebuild: click the reload icon on the SideKick card in chrome://extensions."
+

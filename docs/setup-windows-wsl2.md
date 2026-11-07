@@ -91,3 +91,46 @@ just nb                                          # NB01 in marimo (opens a brows
 HTTP 429 refuses further fetches for 30 minutes (`~/.sidekick/blocked_until`; delete the file
 to reset). `just nb` prints a `http://localhost:2718/...` URL to open in Windows Chrome; the
 notebook reads your raw log, then `just record` fixtures, then the synthetic sample.
+
+## 7. The Chrome extension: SideKick's Selection (M5)
+
+The extension is built inside WSL2 and loaded into Windows Chrome as an unpacked extension.
+
+**Once: Node.js 22+ in WSL2**
+
+```bash
+sudo apt update && sudo apt install -y nodejs npm
+node --version        # needs v22 or newer
+```
+
+If apt gives an older Node, install it with nvm instead:
+`curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash`, open a new
+terminal, then `nvm install 22`.
+
+**Build and load**
+
+```bash
+just ext-install      # once, and again after package changes
+just ext-win          # builds and copies it to C:\Users\<you>\SideKick-extension
+```
+
+1. In Windows Chrome, open `chrome://extensions` and switch on **Developer mode** (top right).
+2. Click **Load unpacked** and pick the folder `just ext-win` printed.
+3. Pin "YouTube SideKick" in the toolbar if you like. The toolbar icon and the right-click
+   menu **SideKick's Selection** both open the side panel.
+4. **Reload any YouTube tab that was already open,** so the extension can read its up-next
+   list. Without a reload the panel still works, using only the signed-out list the backend
+   fetches.
+
+**Use it.** Keep `just dev` running in a WSL2 terminal. Open a YouTube video, then open the
+panel: it shows progress (about 70 s cold, 20–40 s warm), then 10 cards.
+
+- **Click a card:** the video plays in the same tab, and the panel recomputes for it.
+- **👎:** asks for a note. The note is appended to `~/.sidekick/profile.md` and applies from
+  the next refresh.
+- **Settings:** the link at the bottom of the panel; the default backend is
+  `http://localhost:8000`.
+
+**After pulling changes,** run `just ext-win` again, then click the reload icon on the
+SideKick card in `chrome://extensions`. Backend changes only need `just dev` (it reloads by
+itself).

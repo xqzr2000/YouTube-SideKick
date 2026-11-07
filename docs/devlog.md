@@ -445,3 +445,18 @@ evidence from real pages comes from the owner's runs.
   - Without a video id, the API falls back to the last video SideKick computed for; with no
     history it returns `empty`.
 - `just e3` now fits on panel computes too (any trigger except the synthetic sample).
+- **PR #33: the Chrome extension** (`extension/`, WXT 0.21 + TypeScript, no UI framework).
+  - **Background:** the right-click menu "SideKick's Selection" and the toolbar icon open the
+    side panel. It remembers the last watch page, for the off-watch-page fallback.
+  - **Content script:** reads the open video and its signed-in up-next. It walks
+    `/watch?v=` links in the right-hand column and sorts each item's text by shape (`12:34`
+    is a duration, `… views`, `… ago`), so it doesn't depend on exact class names. Shorts,
+    playlists and mixes are skipped.
+  - **Panel:** progress steps, then 10 cards. A card click plays the video in the same tab,
+    logs the click, waits for the new up-next to render, and recomputes. 👎 opens a note box
+    whose Save stays disabled until there's text.
+  - **Settings page:** the backend URL, with a connection test.
+  - **Tests:** Vitest on synthetic markup in both up-next layouts, the API client and
+    polling. CI gets an extension job (typecheck, test, build).
+  - `just ext-install`, `just ext-build`, and `just ext-win` (WSL2: copies the build to a
+    Windows folder for **Load unpacked**).
