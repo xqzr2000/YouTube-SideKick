@@ -29,6 +29,11 @@ Examples::
     just label --n 20 --seed bFZ-0FH5hfs
     just label --stats          # counts only, no questions
     just label --seeds          # redo the seed question for every current video
+    just label --top10          # only SideKick's top 10 and YouTube's first 10 up-next of the
+                                # newest `just recommend` per seed (mixed, unmarked), for P@10
+
+``--stats`` also prints precision@10 of SideKick's top 10 against YouTube's own up-next
+(``sidekick.recommend.evaluate``).
 """
 
 from __future__ import annotations
@@ -159,6 +164,25 @@ def plan(store: Store, n: int, *, seed: str | None = None, rng: random.Random) -
     while len(picked) < n and any(pools):
         for p in pools:
             if p and len(picked) < n:
+                picked.append(p.pop())
+    return picked
+
+
+def plan_top10(store: Store, n: int | None, *, rng: random.Random) -> list[Item]:
+    """Unlabeled videos of both top-10 lists, shuffled within each seed (so neither list is
+    recognizable by order), round-robin across seeds."""
+    from sidekick.recommend.evaluate import to_label
+
+    by_seed: dict[str, list[Item]] = {}
+    for seed, vid, cid in to_label(store):
+        by_seed.setdefault(seed, []).append(Item(seed, vid, cid))
+    pools = list(by_seed.values())
+    for p in pools:
+        rng.shuffle(p)
+    picked: list[Item] = []
+    while any(pools) and (n is None or len(picked) < n):
+        for p in pools:
+            if p and (n is None or len(picked) < n):
                 picked.append(p.pop())
     return picked
 
@@ -361,17 +385,32 @@ def stats(store: Store) -> list[str]:
         for seed_id, n in per_seed:
             title = (store.get_video(seed_id) or {}).get("title") or ""
             lines.append(f"  {seed_id}  {n:>4}  {title[:60]}")
+    from sidekick.recommend.evaluate import report as top10_report
+
+    top = top10_report(store)
+    if top:
+        lines += top
     return lines
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="just label", description=__doc__.split("\n")[0])
-    ap.add_argument("--n", type=int, default=40, help="how many candidate videos (default 40)")
+    ap.add_argument(
+        "--n",
+        type=int,
+        default=None,
+        help="how many candidate videos (default 40; all with --top10)",
+    )
     ap.add_argument("--seed", help="only candidates seen while this video was current")
     ap.add_argument("--session", help="session name stored with each label (default: now)")
     ap.add_argument("--stats", action="store_true", help="print label counts and exit")
     ap.add_argument(
         "--seeds", action="store_true", help="redo the seed question for every current video"
+    )
+    ap.add_argument(
+        "--top10",
+        action="store_true",
+        help="label SideKick's and YouTube's top 10 of the newest `just recommend` per seed",
     )
     args = ap.parse_args(argv)
 
@@ -390,9 +429,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"\nsaved {n} seed label(s) (session {session})")
             print("\n".join(stats(store)))
             return 0
-        items = plan(store, args.n, seed=args.seed, rng=random.Random())
+        if args.top10:
+            items = plan_top10(store, args.n, rng=random.Random())
+        else:
+            items = plan(store, args.n or 40, seed=args.seed, rng=random.Random())
         if not items:
-            print("nothing left to label. Run `just fetch` on more videos, or see --stats.")
+            hint = "`just recommend`" if args.top10 else "`just fetch`"
+            print(f"nothing left to label. Run {hint} on more videos, or see --stats.")
             return 0
         n_seeds = len({it.seed_id for it in items})
         print(f"{len(items)} videos from {n_seeds} current video(s). Answers save as you go.")

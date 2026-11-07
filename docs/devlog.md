@@ -392,3 +392,21 @@ evidence from real pages comes from the owner's runs.
   budgets 10–30 and counts how many shown and labeled-good videos would have gone unenriched.
   A few `just recommend <id> --cold` runs (page cache skipped, logged as `cli-cold`) check the
   line where it matters, at the cold end.
+
+## Session 7 — 2026-11-06: E3 report, top-10 label pass
+
+- **E3 on real data:** 30 computes (3 of them cold). Time = 2.0 s + **2.60 s per page**, R²
+  0.98, residual SD 3.5 s. The three cold checks (27 pages: 72, 70 and 71 s) landed on the line
+  (72 s). The 95 % prediction bound allows 31 pages, so the budget **stays at 25**: 72 s mean,
+  79 s bound, and still under 90 s with the worst case of 4 searches. A budget of 20 would save
+  about 13 s but leave 32 of 120 shown videos unenriched. The round-1 search supplied 3–5 of
+  each top 10; rounds 2–3 never triggered. Write-up: `reports/E3-timing.md`.
+- *Finding for later:* round 0 spends 19–20 of the 25 enrichment slots before the search
+  results arrive, so 4–6 search results per cold compute go out unenriched, and some still
+  rank high. Pre-scoring up-next and search together before enriching would cost no extra
+  pages. It waits for a precision@10 baseline to measure against.
+- **`just label --top10` + precision@10 in `just label --stats`.** For the newest
+  `just recommend` of each seed it asks only about SideKick's top 10 and YouTube's first 10
+  up-next (current video, Shorts, live and premieres skipped), mixed and unmarked, so neither
+  list is recognizable. P@10 is good ÷ labeled, with the bad share alongside. YouTube's own
+  list is the baseline that SideKick has to beat.
