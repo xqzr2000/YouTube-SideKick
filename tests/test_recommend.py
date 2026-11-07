@@ -379,3 +379,46 @@ def test_cold_skips_the_page_cache(store, tmp_path):
     _, cold = run(store, tmp_path, min_pool=3, always_search=False, cache_ttl=timedelta(0))
     assert warm2.pages_fetched == 1  # everything cached but the current page
     assert cold.pages_fetched == warm1.pages_fetched > 1
+
+
+def test_tab_upnext_joins_round_0_and_steps_are_reported(store, tmp_path):
+    f = FakeFetcher()
+    th = thmod.Thresholds()
+    th.sim["tfidf"] = {"gate": 0.05, "dont_show": 0.30, "downvoted": 0.9}
+    steps = []
+    tab = [
+        Candidate(
+            "BAYES000002", title=UPNEXT["BAYES000002"][0], channel="Stats Hub", duration_s=900
+        ),
+        Candidate(
+            "TAB00000001", title="Bayesian priors, signed in", channel="Tab Ch", duration_s=900
+        ),
+        Candidate(CUR, title="the current video itself"),
+    ]
+    f.metas["TAB00000001"] = meta("TAB00000001", "Bayesian priors, signed in", "Tab Ch")
+    res = recommend(
+        store,
+        PROFILE,
+        video_id=CUR,
+        fetcher=f,
+        sponsorblock=FakeSB(),
+        tagger=HeuristicTagger(),
+        thresholds=th,
+        paths=Paths(tmp_path),
+        config=Config(min_pool=3, always_search=False),
+        tab_upnext=tab,
+        on_step=lambda k, t: steps.append((k, t)),
+    )
+    src = dict(
+        store.conn.execute(
+            "SELECT video_id, GROUP_CONCAT(source) FROM candidates GROUP BY video_id"
+        ).fetchall()
+    )
+    assert src["TAB00000001"] == "tab" and set(src["BAYES000002"].split(",")) == {"upnext", "tab"}
+    assert CUR not in src  # the current video is never a candidate of its own
+    by = {r.candidate.video_id: r for r in res.ranked}
+    assert by["BAYES000002"].parts["recurrence"] > by["BAYES000003"].parts["recurrence"]
+    assert "TAB00000001" in by
+    keys = [k for k, _ in steps]
+    assert keys[0] == "video" and "r0" in keys and keys[-1] == "rank"
+    assert any("kept" in t for k, t in steps if k == "r0")

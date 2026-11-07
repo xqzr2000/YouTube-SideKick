@@ -45,7 +45,9 @@ def print_round(r: RoundLog, out=print) -> None:
 
 
 def _src(lists: list[str]) -> str:
-    up = "up" if "upnext" in lists else ""
+    up = "+".join(
+        x for x in ("up" if "upnext" in lists else "", "tab" if "tab" in lists else "") if x
+    )
     q = sum(x.startswith("query:") for x in lists)
     sb = sum(x.startswith("snowball:") for x in lists)
     return "+".join(x for x in (up, f"q{q}" if q else "", f"s{sb}" if sb else "") if x)

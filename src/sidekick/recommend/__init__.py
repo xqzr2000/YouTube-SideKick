@@ -154,11 +154,19 @@ def recommend(
     config: Config | None = None,
     trigger: str = "cli",
     on_round=None,
+    tab_upnext: list[Candidate] | None = None,
+    on_step=None,
 ) -> Result:
     """Run one compute. ``fetcher`` needs ``watch(id)``, ``search(q)`` and ``pages_fetched``.
+
+    ``tab_upnext`` is the signed-in up-next list the extension read from the open tab; it joins
+    the signed-out up-next as a second round-0 list (``source = tab``), so a video in both gets
+    the recurrence credit. ``on_step(key, text)`` reports progress for the side panel; a step
+    with the same key replaces the previous text.
     ``BlockedError`` / ``PageCapReached`` from the current page or a search propagate after the
     compute is logged with that status."""
     cfg = config or Config()
+    step = on_step or (lambda key, text: None)
     th = thresholds or thmod.load(paths)
     tagger = tagger or load_tagger(paths)
     t0 = time.monotonic()
@@ -176,6 +184,8 @@ def recommend(
         nonlocal space
         t = time.monotonic()
         log.n_new = len(new)
+        what = {0: "Up-next", 1: "Search results"}.get(rnd, f"Round {rnd}")
+        step(f"r{rnd}", f"{what}: filtering {len(new)} videos")
         a = run_stage_a(
             new,
             profile,
@@ -197,6 +207,13 @@ def recommend(
             pre[c.video_id] = sc.prescore(topic, len(pool.lists[c.video_id]), pos, n)
         survivors.sort(key=lambda c: -pre[c.video_id])
         cap = max(0, budget["left"])
+        fetched = [0]
+
+        def got_page(vid, page) -> None:
+            pool.upnext[vid] = list(page.upnext)
+            fetched[0] += 1
+            step(f"r{rnd}", f"{what}: checking videos ({fetched[0]} fetched)")
+
         b, stats = run_stage_b(
             survivors,
             profile,
@@ -207,7 +224,7 @@ def recommend(
             cap=cap,
             **({"ttl": cfg.cache_ttl} if cfg.cache_ttl is not None else {}),
             current_category=res.current.category if res.current else None,
-            on_page=lambda vid, page: pool.upnext.__setitem__(vid, list(page.upnext)),
+            on_page=got_page,
         )
         budget["left"] -= min(cap, len(survivors))
         for d in b:
@@ -228,23 +245,30 @@ def recommend(
                 pool.c_feats[d.video_id] = d.features
         log.c_kept = sum(d.kept for d in c)
         log.seconds = round(time.monotonic() - t, 1)
+        step(f"r{rnd}", f"{what}: {log.c_kept} of {len(new)} kept")
         res.rounds.append(log)
         if on_round:
             on_round(log)
 
     try:
+        step("video", "Reading the video")
         page = fetcher.watch(video_id)
         res.current = page.meta
         if page.meta:
             store.upsert_meta(page.meta)
+            step("video", f"Reading the video: {page.meta.title[:60]}")
         store.log_candidates(cid, page.upnext, source="upnext", round=0)
+        tab = [c for c in (tab_upnext or []) if c.video_id != video_id]
+        if tab:
+            store.log_candidates(cid, tab, source="tab", round=0)
         store.commit()
         ctx = TopicContext(store, tagger)
         anchor = extract(ctx, video_id)
         res.anchor = anchor
 
         new = pool.add_list("upnext", page.upnext)
-        run_round(0, new, RoundLog(round=0, n_candidates=len(page.upnext)))
+        new += pool.add_list("tab", tab)
+        run_round(0, new, RoundLog(round=0, n_candidates=len(page.upnext) + len(tab)))
         res.gate = interest_gate(store, space, video_id, th.for_rep(space.name)["gate"])
         store.set_gate(
             cid,
@@ -296,6 +320,7 @@ def recommend(
                 break
             new = []
             for q, method in qs:
+                step(f"r{rnd}", f"Searching “{q}”")
                 sp = fetcher.search(q)
                 store.log_query(
                     cid, round=rnd, query_text=q, method=method, n_results=len(sp.candidates)
@@ -313,6 +338,7 @@ def recommend(
             ctx = TopicContext(store, tagger)  # IDF and channel stats with the new sightings
             run_round(rnd, new, log)
 
+        step("rank", "Ranking")
         res.ranked = _rank(store, pool, anchor, res, cfg, tagger, cid, video_id, space)
     except BaseException as e:
         res.status = "blocked" if type(e).__name__ == "BlockedError" else "error"
