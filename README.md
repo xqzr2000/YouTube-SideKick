@@ -4,6 +4,8 @@ A Chrome side-panel extension that cleans up YouTube's recommendations for the v
 
 Inspired by Andrej Karpathy's [HackerTube project](https://karpathy.bearblog.dev/hacker-tube/), which replaces YouTube's recommendation feed with videos that Hacker News commenters actually recommended.
 
+https://github.com/user-attachments/assets/413f577d-6cd1-40b3-a116-283519c57ef8
+
 ## Overview
 
 Select text on a YouTube page, right-click, and choose **"SideKick's Selection"** to open the side panel. A local Python backend (running on Linux) handles the processing.
