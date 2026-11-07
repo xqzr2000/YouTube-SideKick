@@ -460,3 +460,30 @@ evidence from real pages comes from the owner's runs.
     polling. CI gets an extension job (typecheck, test, build).
   - `just ext-install`, `just ext-build`, and `just ext-win` (WSL2: copies the build to a
     Windows folder for **Load unpacked**).
+
+## Session 7, end — M5 on both machines; English only
+
+- **M5 works on Windows 11 + WSL2 + Chrome** (Russell). It also works on **ChromeOS + Crostini +
+  Chrome**: the repo installed from a zip download, all tests pass, `localhost:8000` reaches
+  the backend, and panel computes finish under 90 s. The Crostini setup doc now follows that
+  route: uv, `just` from PyPI (`rust-just`), Node 22 via nvm, and a copy of the extension build
+  outside the hidden `.output` folder.
+- **Crostini timing (10 panel computes, 10–14 pages):** about 7.8 s + 2.98 s/page, against
+  2.0 s + 2.60 s/page on WSL2 (R² 0.82, residual SD 9.8 s). The fit doesn't reach the 27-page
+  cold case yet, so two cold checks there come next.
+- **Finding: 44 of 100 panel cards were never enriched.** Merging the tab's up-next with the
+  signed-out list gives round 0 about 35 candidates against a budget of 25, and only enriched
+  videos get Stage B's language check.
+- **The visible symptom:** a Japanese video's panel was full of Japanese videos. Russell wants
+  recommendations "about the content, but only in English". **PR #34:**
+  - **Stage A drops titles written mostly in a non-Latin script** (`script:japanese`,
+    `script:cjk`, `script:korean`, `script:cyrillic`…) when every profile language is
+    Latin-script. It needs no model and runs before any fetch, so these videos no longer use
+    up enrichment slots. Kanji, kana and Hangul count 3× a Latin letter: "【MV】夜に駆ける /
+    YOASOBI" is Japanese, "The Great Guitars - 東京 1980" isn't. It applies to music too
+    (Russell): a French or German concert passes, a Japanese-titled song doesn't.
+  - **A non-English current video gets English round-1 queries instead of the topic query:**
+    - `english`: the English words from its own title, tags and description;
+    - `crosslingual`: the multilingual e5 vector of the video against the English titles
+      already in the database. The nearest titles vote for their shared words. No
+      translation model; it's experimental and will be judged on labels.

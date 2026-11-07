@@ -125,6 +125,8 @@ def main(argv: list[str] | None = None) -> int:
         best = f", {g.best_interest!r}" if g.best_interest else ""
         score = "-" if g.score is None else f"{g.score:.2f}"
         print(f"mode: {g.mode} (gate {score} vs τ {g.tau:.2f}{best})")
+    if res.foreign:
+        print("language: non-English title; round 1 searches in English (english / crosslingual)")
     if a:
         print(f"topic ({a.lead_source}): {a.lead[:80]!r}   query: {a.query()!r}")
     print_result(res, args.show)

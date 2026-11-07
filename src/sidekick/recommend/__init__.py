@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
 
+from sidekick.features import script as scr
 from sidekick.filters import thresholds as thmod
 from sidekick.filters.stage_a import log_decisions, run_stage_a
 from sidekick.filters.stage_b import run_stage_b
@@ -91,6 +92,7 @@ class Result:
     ranked: list[Ranked] = field(default_factory=list)
     backfill_skipped: str = ""
     kind: str = "other"  # lecture | other (diversity caps)
+    foreign: bool = False  # non-Latin-script current video: English queries in round 1
     pages: int = 0
     seconds: float = 0.0
     status: str = "ok"
@@ -254,6 +256,9 @@ def recommend(
         step("video", "Reading the video")
         page = fetcher.watch(video_id)
         res.current = page.meta
+        res.foreign = bool(
+            page.meta and scr.applies(profile.rules.languages) and scr.non_latin(page.meta.title)
+        )
         if page.meta:
             store.upsert_meta(page.meta)
             step("video", f"Reading the video: {page.meta.title[:60]}")
@@ -296,7 +301,14 @@ def recommend(
                 )
                 break
             log = RoundLog(round=rnd)
-            if rnd == 1:
+            if rnd == 1 and res.foreign:
+                cur_vec, vocab = None, []
+                if space is not None and space.rep.cacheable:
+                    cur_vec = space.videos(store, [video_id])[0][0]
+                    vocab = qmod.english_vocab(store, space.name, exclude=[video_id])
+                qs = qmod.english_round1(res.current, cur_vec, vocab)
+                lists = []
+            elif rnd == 1:
                 qs = qmod.round1(anchor, res.gate.mode, res.gate.best_interest)
                 lists: list[tuple[str, str, list[Candidate]]] = []
             else:
@@ -314,9 +326,13 @@ def recommend(
                         pool.snowballed.add(v)
                         lists.append((v, "snowball", pool.upnext[v]))
             if not qs and not lists:
-                res.backfill_skipped = (
-                    "no usable topic for a query" if rnd == 1 else f"round {rnd}: nothing new"
-                )
+                if rnd == 1 and res.foreign:
+                    why = "non-English video: no English words or neighbours to search with"
+                elif rnd == 1:
+                    why = "no usable topic for a query"
+                else:
+                    why = f"round {rnd}: nothing new"
+                res.backfill_skipped = why
                 break
             new = []
             for q, method in qs:
