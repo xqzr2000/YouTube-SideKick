@@ -15,10 +15,14 @@ Reasons:
 ``keyword:<kw>``          keyword in ``exclude_keywords`` found in the title (whole words)
 ``duration<min``          shorter than ``min_duration`` (unknown duration is kept)
 ``duration>max``          longer than ``max_duration``
+``script:<name>``         title written mostly in a non-Latin script (``japanese``, ``cjk``,
+                          ``korean``, ``cyrillic``…) while every profile language is Latin-script
+                          (:mod:`sidekick.features.script`); applies to music too
 ========================  ==============================================================
 
-Language is **not** a Stage A reason. The title's fastText guess is recorded as a feature
-(``title_lang``, ``title_lang_conf``) and Stage B decides on title + description. Titles alone
+Language (the fastText guess) is **not** a Stage A reason; only the writing system is. The
+title's fastText guess is recorded as a feature (``title_lang``, ``title_lang_conf``) and Stage
+B decides on title + description. Titles alone
 were too unreliable: on 2026-11-04 "MIT 6.S191: Reinforcement Learning" came back German at
 ≥ 0.80 and was dropped, though that lecture series is one the user rates good.
 """
@@ -30,6 +34,7 @@ from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from sidekick.features import script as scr
 from sidekick.features.lang import LangDetector
 from sidekick.models import Candidate
 from sidekick.profile.parser import Profile
@@ -88,6 +93,7 @@ def run_stage_a(
     keyword_res = _keyword_patterns(rules.exclude_keywords)
     allowed_langs = set(rules.languages)
     downvoted = set(downvoted)
+    check_script = scr.applies(rules.languages)
 
     decisions = []
     for c in unique_candidates(cands):
@@ -120,6 +126,9 @@ def run_stage_a(
                 reasons.append("duration<min")
             if rules.max_duration_s is not None and c.duration_s > rules.max_duration_s:
                 reasons.append("duration>max")
+        if check_script and (sc := scr.non_latin(c.title)):
+            feats["title_script"] = sc
+            reasons.append(f"script:{sc}")
         if detector is not None and c.title:
             guess = detector.detect(c.title)
             if guess is not None:

@@ -422,3 +422,28 @@ def test_tab_upnext_joins_round_0_and_steps_are_reported(store, tmp_path):
     keys = [k for k, _ in steps]
     assert keys[0] == "video" and "r0" in keys and keys[-1] == "rank"
     assert any("kept" in t for k, t in steps if k == "r0")
+
+
+def test_non_english_video_searches_in_english(store, tmp_path):
+    f = FakeFetcher()
+    f.metas[CUR] = meta(
+        CUR, "ベイズ統計 入門 第17回 Bayesian priors", "東京大学", desc="事前分布と事後分布"
+    )
+    th = thmod.Thresholds()
+    th.sim["tfidf"] = {"gate": 0.05, "dont_show": 0.30, "downvoted": 0.9}
+    prof = parse_profile("## Interests\n- bayesian statistics\n\n## Rules\n- language: en\n")
+    res = recommend(
+        store,
+        prof,
+        video_id=CUR,
+        fetcher=f,
+        sponsorblock=FakeSB(),
+        tagger=HeuristicTagger(),
+        thresholds=th,
+        paths=Paths(tmp_path),
+        config=Config(min_pool=3),
+    )
+    assert res.foreign
+    assert f.searched == ["Bayesian priors"]  # English words only (no e5 in tests)
+    methods = [m for lg in res.rounds for _, m, _ in lg.queries]
+    assert methods == ["english"]
