@@ -110,8 +110,13 @@ with recurrence known. Precision@10 on labeled top-10s is the measure, before an
 
 ## Threats to validity
 
-- **One machine:** the Crostini (ChromeOS) numbers are still to come, and the 90 s budget is
-  set against the weaker machine.
+- **One machine:** these numbers are from WSL2. ChromeOS development is paused (2026-11-12),
+  so the 90 s budget is now judged on WSL2 only. Ten panel computes on Crostini (10–14 pages)
+  fitted a steeper line (7.8 s + 2.98 s/page), with no point near the cold end; resuming
+  ChromeOS starts with two `--cold` checks there.
+- **Recheck, 2026-11-12 (39 computes on WSL2):** 1.5 s + 2.69 s/page, R² 0.98; the cold
+  checks still sit at 70–72 s against a bound of 81 s; budget 25 is still the largest under
+  90 s with 4 searches. At 25, 22 of 210 shown videos were unenriched (6 of 91 labeled good).
 - **Few cold computes:** only three, all with 27 pages. The line is fitted mostly on warm and
   partly warm computes; the cold checks confirm it but don't widen its range.
 - **"Unenriched" is not "dropped":** an unenriched video can still be shown, just with less

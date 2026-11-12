@@ -3,6 +3,11 @@
 Chrome runs on ChromeOS. The backend runs in the Crostini Linux VM. The private folder is
 `~/.sidekick/` inside Crostini. Data is not shared with the Windows machine.
 
+> **Paused (2026-11-12).** Development continues on Windows 11 + WSL2 only. This guide
+> worked on 2026-11-06 and is kept as is; it hasn't been rechecked against later changes.
+> Resuming starts with a fresh zip, `just test`, and two `just recommend <id> --cold` runs
+> followed by `just e3` to check the 90 s budget on this machine.
+
 This setup was checked on 2026-11-06 with a zip download of the repo (no git):
 
 | | |
