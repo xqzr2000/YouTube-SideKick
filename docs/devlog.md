@@ -47,6 +47,7 @@ evidence from real pages comes from the owner's runs.
 | #34 | M5 | English only: Stage A script rule; English and cross-lingual round-1 queries; ChromeOS zip setup |
 | #35 | M5 | M5 closed; ChromeOS paused; README status; this entry |
 | #36 | M6 | Labeling app (NB05, `just label-app`): whole ranked pools per current video, `sidekick.labeling` |
+| #37 | M6 | Study note: how to build a labeling app (`docs/labeling-app-guide.md`), minimal example app |
 
 ---
 
