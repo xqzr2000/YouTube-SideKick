@@ -9,21 +9,32 @@ https://github.com/user-attachments/assets/4c383c72-8002-434b-b403-070a67a8c993
 
 ## Overview
 
-Select text on a YouTube page, right-click, and choose **"SideKick's Selection"** to open the side panel. A local Python backend (running on Linux) handles the processing.
+On a YouTube watch page, right-click and choose **"SideKick's Selection"** (or click the toolbar icon) to open the side panel. It shows 10 videos to watch next, picked for the video you're on. A local Python backend (running on Linux) handles the processing.
 
 On the surface, SideKick is a browser extension. At its core, it's a data science project: I'm building a recommendation engine from scratch.
 
 ## Status
 
-Early development (M1 done: parsers, polite fetcher, NB01; M2 done: profile, SQLite store,
-Stage A/B filters, enrichment, NB02; M3 done: hand labels, TF-IDF / LSA / e5 text
-representations, interest gate, Stage C soft filters, NB03, E1/E2; M4 done: the topic
-anchor, `just recommend` with backfill rounds, a v0 score and MMR with group caps, E3 timing,
-and E4 part 1: SideKick's top 10 at 66 % good vs 49 % for YouTube's up-next; M5 next: the
-backend API and the Chrome extension). See `docs/` for setup:
+The extension works end to end (M0–M5 done). The data-science half continues:
 
-- [Windows 11 + Chrome + WSL2](docs/setup-windows-wsl2.md) (primary dev box)
-- [ChromeOS + Chrome + Crostini](docs/setup-chromeos.md)
+- **M1–M2:** parsers, polite fetcher, profile, SQLite store, Stage A/B filters, enrichment
+  (NB01, NB02).
+- **M3:** hand labels, TF-IDF / LSA / e5 text representations, interest gate, Stage C soft
+  filters (NB03, [E1](reports/E1-representations.md), [E2](reports/E2-interest-gate.md)).
+- **M4:** topic anchor, `just recommend` with backfill rounds, v0 score, MMR with group caps
+  ([E3 timing](reports/E3-timing.md)).
+- **M5:** backend API and the Chrome extension; English-only rule for non-Latin titles, with
+  English and cross-lingual searches for non-English videos.
+- **First result ([E4 part 1](reports/E4-ranker.md)):** on 7 seed videos, 66 % of SideKick's
+  top 10 were labeled good, against 49 % of YouTube's own first 10 up-next (bad: 14 % vs 31 %).
+- **Next, M6:** a labeling app, offline evaluation (NDCG@10) and a learned ranker. **M7:**
+  taste drift and why YouTube keeps resurfacing some videos (E5, E6), and a model card.
+
+See `docs/` for setup:
+
+- [Windows 11 + Chrome + WSL2](docs/setup-windows-wsl2.md) (the development machine)
+- [ChromeOS + Chrome + Crostini](docs/setup-chromeos.md) (worked on 2026-11-06; paused since
+  2026-11-12)
 
 How it's being built, session by session: [dev log](docs/devlog.md).
 

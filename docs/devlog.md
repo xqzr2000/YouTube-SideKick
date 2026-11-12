@@ -38,6 +38,14 @@ evidence from real pages comes from the owner's runs.
 | #25 | M4 | `just recommend`: one full compute with backfill round 1, a cheap pre-score for the enrichment budget, v0 score, per-channel cap |
 | #26 | M4 | Round 1 always searches; rounds 2–3 (Rocchio + snowball) under a deadline; MMR with group caps (same course ≤ 5, same performer/show ≤ 2) |
 | #27 | M4 | Fix the caps: performer names trimmed and matched across the pool; same-course lectures not redundant in MMR |
+| #28 | M4 | Diversity groups also match performer names in the channel |
+| #29 | M4 | `just e3` (time vs pages, budget under 90 s, budget replay), `just recommend --cold` |
+| #30 | M4 | E3 report; `just label --top10` and precision@10 against YouTube's up-next |
+| #31 | M4 | E4 part 1 report (v0 vs YouTube's up-next); M4 closed |
+| #32 | M5 | Backend API: computes as background jobs with progress steps, feedback (click, 👎 + note) |
+| #33 | M5 | Chrome extension (WXT + TypeScript): context menu, side panel, settings; CI job |
+| #34 | M5 | English only: Stage A script rule; English and cross-lingual round-1 queries; ChromeOS zip setup |
+| #35 | M5 | M5 closed; ChromeOS paused; README status; this entry |
 
 ---
 
@@ -487,3 +495,41 @@ evidence from real pages comes from the owner's runs.
     - `crosslingual`: the multilingual e5 vector of the video against the English titles
       already in the database. The nearest titles vote for their shared words. No
       translation model; it's experimental and will be judged on labels.
+
+## Session 8 — 2026-11-12: M5 closed, ChromeOS paused, M6 planned
+
+- **Status check:** `main` at #34, no open PRs, 234 Python and 16 extension tests pass, and no
+  private data in the repo.
+- **#34 checked on a real Japanese video** (a talk on Bayesian statistics for a statistics
+  exam):
+  - the panel saw the non-English title and searched in English. The title had no English
+    words, so the only query was the cross-lingual one, and the English titles already in the
+    database voted for `Bayesian Statistics`;
+  - Stage A dropped 10 of the 20 up-next videos before any fetch, and the top 10 was all
+    English and all on Bayesian statistics;
+  - 27 pages in 76.8 s, on the timing line.
+- **Two findings for M6:**
+  - **Diversity can promote an outlier.** A "binaural beats for studying" video from up-next
+    took #9 with score 0.20, ahead of three Bayesian videos at 0.22–0.25. MMR rewards being
+    unlike what's already picked, so in a pool that is mostly one topic the odd one out gains
+    the most. The fix is a relevance floor for MMR, measured with NDCG in M6.
+  - **The topic part is 0 for every candidate when the current video isn't English**, because
+    the topic anchor uses an English spaCy model. The ranking then rests on e5 similarity,
+    which is multilingual. The learned ranker gets a feature for it.
+- **E3 rechecked** on 39 computes: 1.5 s + 2.69 s/page (R² 0.98); budget 25 stays. At 25,
+  about 10 % of shown videos go out unenriched on WSL2. The 44 % seen on the Chromebook came
+  from its fresh, empty page cache, so round 0 stays as it is.
+- **ChromeOS paused** (owner's decision): development continues on WSL2 only, and the 90 s
+  budget is judged there. The ChromeOS guide stays, marked as last checked on 2026-11-06.
+- **M6 plan, decisions** (owner took the recommended answers):
+  - labels stay good / meh / bad, scored 2 / 1 / 0 for NDCG@10;
+  - train and test split by seed in time order, with leave-one-seed-out as a second check (the
+    spec's rule against random splits; seeds, not videos, are the independent units);
+  - no separate clickbait classifier: with about 50 bad labels, the Stage C scores go into the
+    ranker as features;
+  - panel clicks are an online check only, not training positives, since a click depends on
+    the card's position.
+- **M6 order:** M6a a labeling app (marimo), M6b the evaluation dataset and metrics, M6c the
+  learned ranker (logistic regression, then LightGBM) with the MMR fix, M6d the E4 part 2
+  report.
+
