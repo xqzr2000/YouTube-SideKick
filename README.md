@@ -37,6 +37,8 @@ See `docs/` for setup:
   2026-11-12)
 
 How it's being built, session by session: [dev log](docs/devlog.md).
+The data science used along the way, technique by technique, with the evidence and where the
+code is: [study log](docs/study-log.md).
 
 Quick start (inside the Linux environment): `just sync && just test && just dev`, then open
 `http://localhost:8000/health` in Chrome.
