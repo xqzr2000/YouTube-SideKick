@@ -46,6 +46,7 @@ evidence from real pages comes from the owner's runs.
 | #33 | M5 | Chrome extension (WXT + TypeScript): context menu, side panel, settings; CI job |
 | #34 | M5 | English only: Stage A script rule; English and cross-lingual round-1 queries; ChromeOS zip setup |
 | #35 | M5 | M5 closed; ChromeOS paused; README status; this entry |
+| #36 | M6 | Labeling app (NB05, `just label-app`): whole ranked pools per current video, `sidekick.labeling` |
 
 ---
 
@@ -533,3 +534,37 @@ evidence from real pages comes from the owner's runs.
   learned ranker (logistic regression, then LightGBM) with the MMR fix, M6d the E4 part 2
   report.
 
+
+## Session 8, continued — M6a: the labeling app
+
+- **PR #36: the labeling app** (`notebooks/05_labeling.py`, served by `just label-app` at
+  `http://localhost:2718`), with the queue logic in `sidekick.labeling`.
+- **Why a new labeling flow and not more `just label`:** M6 compares rankers by re-ranking
+  logged pools. A new ranker can move any video in a pool into its top 10, so NDCG@10 and P@10
+  are only trustworthy if the whole pool is labeled, not just what v0 showed. The app works
+  **one current video at a time** and asks about every video that reached the ranking step
+  (shown or not) before moving on. `just label` spread labels across all seeds instead.
+- **Two queues:**
+  - `ranked`: the union of the ranked pools of all computes for a current video;
+  - `filtered`: filter drops SideKick could have shown, for the false-removal rate. Format
+    drops (current video, Shorts, live, upcoming) and videos that reached ranking in another
+    compute are left out.
+- **Kept from `just label`:** the same contextual question, the same good / meh / bad labels,
+  the seed question (does the current video match your Interests?) asked first when missing,
+  and scores, ranks and filter decisions hidden.
+- **New:**
+  - the order within a current video is a fixed shuffle, so it's stable between reruns and
+    reveals neither rank nor whether a video was shown;
+  - current videos come newest first, so panel use is labeled while it's fresh;
+  - the midpoint thumbnail and the reasons used before (to keep wording consistent);
+  - undo, and a progress table (ranked / shown / filtered labeled per current video, panel or
+    CLI, Interests answer).
+- **The real database is opened per read or write,** so the app never holds a connection the
+  backend (`just dev`) is waiting on. The `sample` source replays the synthetic sample with
+  stand-in rankings so the app and its test run without a database; its labels vanish when the
+  app stops.
+- **Checked in a real browser** (headless Chrome against `marimo run` on a copy of the sample
+  saved as a database file): seed question, labels with reasons, skip and undo all reach the
+  `labels` table; the undone video comes back.
+- **Dead end:** the "saved this session" counter didn't change after undo. marimo doesn't
+  rerun the cell whose own button changed a state, so the counter moved to its own cell.

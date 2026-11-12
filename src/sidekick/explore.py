@@ -341,3 +341,76 @@ def _corpus_reps(store: Store, lines: list[str]) -> list:
 
     docs = corpus(store, lines)
     return [TfidfRep().fit(docs), LsaRep().fit(docs)]
+
+
+# -- NB05: the labeling app --------------------------------------------------------------------
+
+LABELING_SOURCES = ("auto", "db", "sample")
+
+
+def _rank_sample(store: Store) -> None:
+    """Synthetic stage R decisions for the sample, so the labeling app has pools to show: Stage
+    A survivors of each watch compute, scored 1 for the current video's topic, 0.5 for no
+    known topic and 0 otherwise, minus a little for position; the top 10 count as shown.
+    Not SideKick's ranker; only a stand-in so the app and its tests run without a database."""
+    computes = store.conn.execute(
+        "SELECT compute_id, current_video_id FROM computes WHERE current_video_id IS NOT NULL"
+    ).fetchall()
+    with store.conn:
+        for cid, seed in computes:
+            topic = _sample_topic((store.get_video(seed) or {}).get("title"))
+            rows = store.conn.execute(
+                """SELECT d.video_id, MIN(k.position) FROM decisions d
+                   JOIN candidates k ON k.compute_id = d.compute_id AND k.video_id = d.video_id
+                   WHERE d.compute_id = ? AND d.stage = 'A' AND d.kept = 1
+                   GROUP BY d.video_id""",
+                (cid,),
+            ).fetchall()
+            scored = []
+            for vid, pos in rows:
+                t = _sample_topic((store.get_video(vid) or {}).get("title"))
+                s = 0.5 if t is None else float(t == topic)
+                scored.append((s - 0.01 * (pos or 0), vid))
+            scored.sort(reverse=True)
+            for rank, (score, vid) in enumerate(scored, 1):
+                shown = rank <= 10
+                store.log_decision(
+                    cid,
+                    vid,
+                    stage="R",
+                    kept=shown,
+                    reason=None if shown else "rank",
+                    score=score,
+                    features={"rank": rank if shown else None, "sample": True},
+                )
+
+
+def load_labeling(
+    source: str = "auto", *, paths: Paths | None = None, sample_path: Path = SAMPLE_PATH
+) -> dict[str, Any]:
+    """Return ``{"source", "db_path", "store", "interests"}`` for the labeling app.
+
+    ``db`` labels into ``~/.sidekick/sidekick.db`` (``store`` is None: the app opens the file
+    for each read or write, so it never holds a connection the backend might be waiting on).
+    ``sample`` is an in-memory replay of the synthetic sample with stand-in rankings; its labels
+    vanish when the app stops. ``auto`` uses the database if it has any ranked computes."""
+    if source not in LABELING_SOURCES:
+        raise ValueError(f"source must be one of {LABELING_SOURCES}")
+    paths = paths or get_paths()
+    if source == "auto":
+        source = "sample"
+        if paths.db.exists():
+            with Store(paths.db) as s:
+                if s.conn.execute("SELECT 1 FROM decisions WHERE stage = 'R' LIMIT 1").fetchone():
+                    source = "db"
+    if source == "db":
+        return {
+            "source": "db",
+            "db_path": paths.db,
+            "store": None,
+            "interests": load_profile(paths).interests,
+        }
+    profile = parse_profile(SAMPLE_PROFILE)
+    store = _sample_store(sample_path, profile)
+    _rank_sample(store)
+    return {"source": "sample", "db_path": None, "store": store, "interests": profile.interests}
