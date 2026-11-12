@@ -73,6 +73,12 @@ topic *args:
 label *args:
     uv run python -m sidekick.label "$@"
 
+# Labels go straight into ~/.sidekick/sidekick.db; one current video's whole ranked pool at a
+# time, scores and ranks hidden; Ctrl+C stops it.
+# The M6 labeling app (NB05) at http://localhost:2718
+label-app:
+    uv run --group nb marimo run --headless --port 2718 notebooks/05_labeling.py
+
 # Set gate + Stage C thresholds from your labels (dry run; `just tune --write` saves them)
 [positional-arguments]
 tune *args:

@@ -54,6 +54,8 @@ cache). `just e3` fits compute time against pages fetched and works out the larg
 enrichment budget that stays under 90 s ([E3 report](reports/E3-timing.md)).
 `just label --top10` labels SideKick's top 10 and YouTube's first 10 up-next, mixed, and
 `just label --stats` then compares their precision@10.
+`just label-app` opens the labeling app (M6) at `http://localhost:2718`: it labels each
+current video's whole ranked pool, shown or not, with scores and ranks hidden.
 
 **Backend API (M5, for the side panel; `just dev` serves it on port 8000):**
 - `POST /computes` starts a compute. Body: `{"video_id", "upnext": [...], "trigger"}`, where

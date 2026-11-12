@@ -1,7 +1,8 @@
 """``just label``: hand-label logged videos for the M3 experiments (E1, E2).
 
-A stop-gap until the M6 labeling app. It walks through videos that past computes saw and asks
-one question per video, saving answers to the ``labels`` table:
+For new labels, the M6 labeling app (``just label-app``, NB05) replaces it; this CLI stays
+for ``--stats``, ``--seeds`` and ``--top10``. It walks through videos that past computes saw
+and asks one question per video, saving answers to the ``labels`` table:
 
 - **Seed question** (``kind=seed``), asked once per current video: *does this video match your
   profile's Interests lines* (printed with the question)? ``g`` yes · ``m`` partly · ``b`` no.
