@@ -149,3 +149,16 @@ def test_nb05_runs_on_sample(tmp_path, monkeypatch):
     _, defs = mod.app.run()
     assert defs["data"]["source"] == "sample"
     assert defs["item"].kind == "seed" and defs["left"] > 0
+
+
+def test_mini_labeler_runs(tmp_path, monkeypatch):
+    """The study-guide example (docs/labeling-app-guide.md) runs and creates its table."""
+    pytest.importorskip("marimo")
+    monkeypatch.setenv("MINI_LABELS_DB", str(tmp_path / "labels.db"))
+    path = ROOT / "notebooks" / "examples" / "mini_labeler.py"
+    spec = importlib.util.spec_from_file_location("mini_labeler", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    _, defs = mod.app.run()
+    assert len(defs["queue"]) == 6 and defs["item"] == defs["ORDER"][0]
+    assert defs["save"]("v01", "good", " ok ") and defs["labeled_ids"]() == {"v01"}

@@ -43,7 +43,7 @@ src = ["src", "tests"]
 
 [tool.ruff.lint.per-file-ignores]
 # marimo cells return tuples and reuse names across cells by design
-"notebooks/*.py" = ["B018", "F811"]
+"notebooks/**/*.py" = ["B018", "F811"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
