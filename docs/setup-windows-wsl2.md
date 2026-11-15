@@ -177,6 +177,10 @@ It prints the password, which is made on the first run and kept in
 `~/.sidekick/label-app-password`. On the Chromebook, open `http://<that IPv4 address>:2718` and
 type the password once; Chrome remembers the login. Ctrl+C in the WSL2 terminal stops it.
 
+- **iPhone / iPad / Android:** the same address works in Safari or Chrome on your home Wi-Fi
+  (not over mobile data). The page fits a phone: the thumbnail sits above the text, and one tap
+  on good / meh / bad / skip saves. Pick a reason you used before from the list instead of
+  typing. **Share → Add to Home Screen** in Safari gives it an icon.
 - **Only on networks you trust.** The password keeps others on the same Wi-Fi out, but the page
   is plain HTTP. Don't run it on public Wi-Fi.
 - **One app at a time.** `just label-app` and `just label-app-lan` both use port 2718, so stop
