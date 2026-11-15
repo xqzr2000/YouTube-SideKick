@@ -203,9 +203,31 @@ Two details matter:
 | item id | (current video, candidate) via `compute_id` | the label depends on context |
 | no context shown | "While watching ..." and the seed question first | the question includes the context |
 | text only | midpoint thumbnail, channel, duration, views, age, description | enough to judge in seconds |
-| — | skip state, reasons used before, progress table | ergonomics (Part 1, §5) |
+| — | skip state, reasons used before (a pick list), progress table, one-tap buttons, phone layout | ergonomics (Part 1, §5) |
 | `labels.db` | `~/.sidekick/sidekick.db`, opened per read/write | private data; `just dev` runs alongside |
 | — | a `sample` source with stand-in rankings | CI and demos without private data |
+
+### Form + Save, or one tap per answer?
+
+The minimal app uses a **form**: pick a label, then Save. SideKick's app started that way and
+then switched to **four buttons that save on tap** (after the first real labeling sessions
+showed the two-step answer was slow, and for labeling on a phone). The trade-off:
+
+| | Form + Save | One tap (buttons with `on_click`) |
+|---|---|---|
+| Taps per answer | 2 | 1 |
+| Half-finished answers | impossible: nothing reaches the database before Save | none either: the tap is the answer |
+| Reason text | submitted with the form | read from the text box inside the callback (`reason.value`), so type it *before* tapping |
+| Accidental double tap | the form clears after submit | a guard in the callback ignores a second tap on the same item |
+| Where the save happens | a separate "save" cell reacting to `form.value` | the button's callback, which then bumps the tick |
+
+Both close the same loop (save → tick → next item). With buttons, the callback is created
+inside the view cell, so it always labels *the item that cell drew*, never the next one.
+
+**Phone layout:** marimo's `mo.hstack` keeps items side by side. The card is plain HTML with
+`display:flex; flex-wrap:wrap` and `max-width:100%` on the image, so the thumbnail moves above
+the text on a narrow screen. Previously used reasons are a dropdown, which a phone shows as
+its native picker (no typing).
 
 ---
 

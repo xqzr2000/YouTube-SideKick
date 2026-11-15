@@ -50,6 +50,7 @@ evidence from real pages comes from the owner's runs.
 | #37 | M6 | Study material: `docs/study-log.md` (data science used, by technique) and `docs/labeling-app-guide.md` with a minimal example app |
 | #38 | M6 | Study log reaches `main` (its commit landed after #37 was merged) |
 | #39 | M6 | `just label-app-lan`: the labeling app for the Chromebook over the home network, password-protected |
+| #40 | M6 | Labeling app for phones: one tap per answer, reasons used before as a pick list, card wraps on narrow screens |
 
 ---
 
@@ -599,4 +600,25 @@ evidence from real pages comes from the owner's runs.
 - **Dead end:** the first network-address test showed "kernel not found" with a WebSocket 403.
   The cause was the sandbox's own outbound proxy, not marimo; with the proxy bypassed it
   worked. Home network addresses (`192.168.x`) don't go through such a proxy.
+- **PR #40, labeling from an iPhone** (owner's request, Safari on home Wi-Fi via
+  `just label-app-lan`):
+  - **One tap per answer:** four buttons (good / meh / bad / skip) save on tap and replace the
+    radio + Save form. The optional reason is typed or **picked from reasons used before** (a
+    dropdown, which a phone shows as its native picker).
+  - **Card layout:** the card is HTML with `flex-wrap`, so the thumbnail sits above the text on
+    a phone and beside it on a desktop.
+  - **Shorter screen:** "How this works" and "Progress" fold into accordions, and the progress
+    columns are shorter.
+- **Checked** in Chrome emulating an iPhone 13 (390 px wide, touch, Safari user agent),
+  through the password login on the network address:
+  - no horizontal scrolling;
+  - one tap saves, and a reason typed right before the tap is kept;
+  - skip and undo work, and the counter is right;
+  - a picked reason is saved;
+  - on a desktop, the thumbnail stays beside the text.
+
+  WebKit itself couldn't be downloaded in the sandbox, so real Safari is the owner's check.
+- **Design note:** the one-tap callback is created inside the view cell, so it always labels
+  the item that cell drew. A guard ignores a second tap on the same item. The labeling-app
+  guide has a new section on form vs one-tap.
 

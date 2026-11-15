@@ -6,6 +6,7 @@ app = marimo.App(width="medium", app_title="SideKick labeling")
 
 @app.cell
 def _():
+    import html
     from contextlib import contextmanager, nullcontext
     from datetime import UTC, datetime
 
@@ -22,6 +23,7 @@ def _():
         UTC,
         contextmanager,
         datetime,
+        html,
         load_labeling,
         mo,
         nullcontext,
@@ -30,11 +32,15 @@ def _():
 
 @app.cell
 def _(mo):
-    mo.md("""
-    # NB05 — Labeling app
-
-    One question per video: **while watching the current video, would you want this one shown
-    next?** good / meh / bad, with an optional short reason. Answers are saved at once.
+    mo.vstack(
+        [
+            mo.md("## SideKick labeling"),
+            mo.accordion(
+                {
+                    "How this works": mo.md("""
+    One question per video: **while watching the current video, would you want this one
+    shown next?** Type or pick a reason if you like (optional), then tap **good**, **meh**,
+    **bad** or **skip**. Each tap is saved at once; **Undo** takes back the last one.
 
     - **ranked** (default): every video that reached SideKick's ranking step for a current
       video, shown or not. M6 compares rankers by re-ranking these pools, so the app finishes
@@ -45,9 +51,14 @@ def _(mo):
     and the order is shuffled. For a current video without a seed label, the app first asks
     whether it matches your Interests (yes / partly / no).
 
-    `just label-app` serves this page at `http://localhost:2718`. The `sample` source is a
+    `just label-app` serves this page at `http://localhost:2718`; `just label-app-lan` also
+    serves it to a phone or the Chromebook on your home network. The `sample` source is a
     synthetic replay whose labels vanish when the app stops.
     """)
+                }
+            ),
+        ]
+    )
     return
 
 
@@ -113,23 +124,84 @@ def _(L, db, get_skip, get_tick, queue, seed_pick):
 
 
 @app.cell
-def _(data, item, left, mo, reasons, seed_card, video_card):
-    def _video(c, width):
-        return mo.hstack(
-            [
-                mo.image(src=c["thumbnail"], width=width, rounded=True),
-                mo.md(
-                    f"**[{c['title']}]({c['url']})**  \n"
-                    f"{c['channel']} · {c['duration']} · {c['views']} views · {c['age']}"
-                    + (f"\n\n<small>{c['description']}</small>" if c["description"] else "")
-                ),
-            ],
-            justify="start",
-            align="start",
-            widths=[0, 1],
+def _(html, mo):
+    def video_card_html(c, width):
+        """Thumbnail beside the text on a wide screen, above it on a phone (flex-wrap)."""
+        e = html.escape
+        desc = (
+            f'<div style="font-size:0.85em;opacity:0.8;margin-top:6px">{e(c["description"])}</div>'
+            if c["description"]
+            else ""
+        )
+        return mo.Html(
+            '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start">'
+            f'<img src="{e(c["thumbnail"])}" alt="" '
+            f'style="width:{width}px;max-width:100%;border-radius:8px">'
+            '<div style="flex:1 1 240px;min-width:0">'
+            f'<a href="{e(c["url"])}" target="_blank" rel="noopener" '
+            f'style="font-weight:600;font-size:1.05em">{e(c["title"])}</a>'
+            f'<div style="margin-top:4px">{e(c["channel"])} · {e(c["duration"])} · '
+            f"{e(c['views'])} views · {e(c['age'])}</div>{desc}</div></div>"
         )
 
-    form = None
+    return (video_card_html,)
+
+
+@app.cell
+def _(
+    L,
+    data,
+    db,
+    item,
+    left,
+    mo,
+    reasons,
+    seed_card,
+    session,
+    set_history,
+    set_skip,
+    set_tick,
+    video_card,
+    video_card_html,
+):
+    # One tap per answer: type or pick a reason first (optional), then tap a label button.
+    # The buttons are made fresh for each item, so their callbacks always label that item.
+    reason_text = mo.ui.text(placeholder="reason (optional)", full_width=True)
+    reason_pick = mo.ui.dropdown(options=reasons, label="or a reason used before", full_width=True)
+    _answered = []  # a second tap on the same item does nothing
+
+    def _answer(label):
+        def _on_click(_):
+            if _answered:
+                return
+            _answered.append(label)
+            if label == "skip":
+                set_skip(lambda s: s | {(item.seed_id, item.video_id)})
+            else:
+                _reason = (reason_text.value or "").strip() or (reason_pick.value or "")
+                with db() as s:
+                    lid = L.save(s, item, label, reason=_reason, session=session)
+                set_history(lambda h: (*h, lid))
+            set_tick(lambda t: t + 1)
+
+        return _on_click
+
+    def _buttons(names):
+        kinds = {"good": "success", "bad": "danger"}
+        return mo.hstack(
+            [
+                mo.ui.button(
+                    label=shown,
+                    kind=kinds.get(label, "neutral"),
+                    full_width=True,
+                    on_click=_answer(label),
+                )
+                for shown, label in names
+            ],
+            widths="equal",
+            gap=0.5,
+        )
+
     if item is None:
         view = mo.callout(
             mo.md(
@@ -139,37 +211,16 @@ def _(data, item, left, mo, reasons, seed_card, video_card):
             kind="success",
         )
     elif item.kind == "seed":
-        form = (
-            mo.md("{label}")
-            .batch(
-                label=mo.ui.radio(
-                    options={"yes": "good", "partly": "meh", "no": "bad", "skip": "skip"},
-                    inline=True,
-                )
-            )
-            .form(submit_button_label="Save", clear_on_submit=True)
-        )
         _interests = " · ".join(data["interests"]) or "(none in profile.md)"
         view = mo.vstack(
             [
                 mo.md("### Current video: does it match one of your Interests?"),
                 mo.md(f"<small>Not *do I like it*. Interests: {_interests}</small>"),
-                _video(seed_card, 240),
-                form,
+                video_card_html(seed_card, 240),
+                _buttons([("yes", "good"), ("partly", "meh"), ("no", "bad"), ("skip", "skip")]),
             ]
         )
     else:
-        form = (
-            mo.md("{label}\n\n{reason}")
-            .batch(
-                label=mo.ui.radio(
-                    options={"good": "good", "meh": "meh", "bad": "bad", "skip": "skip"},
-                    inline=True,
-                ),
-                reason=mo.ui.text(placeholder="reason (optional)", full_width=True),
-            )
-            .form(submit_button_label="Save", clear_on_submit=True)
-        )
         view = mo.vstack(
             [
                 mo.md(
@@ -177,28 +228,13 @@ def _(data, item, left, mo, reasons, seed_card, video_card):
                     f"<small>({seed_card['channel']}) · {left} left for this video</small>"
                 ),
                 mo.md("### Would you want this shown next?"),
-                _video(video_card, 320),
-                form,
-                mo.md("<small>Reasons used before: " + " · ".join(reasons) + "</small>")
-                if reasons
-                else mo.md(""),
+                video_card_html(video_card, 320),
+                reason_text,
+                reason_pick if reasons else mo.md(""),
+                _buttons([(n, n) for n in ("good", "meh", "bad", "skip")]),
             ]
         )
     view
-    return (form,)
-
-
-@app.cell
-def _(L, db, form, item, session, set_history, set_skip, set_tick):
-    _v = form.value if form is not None else None
-    if _v and _v.get("label"):
-        if _v["label"] == "skip":
-            set_skip(lambda s: s | {(item.seed_id, item.video_id)})
-        else:
-            with db() as _s:
-                _lid = L.save(_s, item, _v["label"], reason=_v.get("reason") or "", session=session)
-            set_history(lambda h: (*h, _lid))
-        set_tick(lambda t: t + 1)
     return
 
 
@@ -232,19 +268,18 @@ def _(L, db, get_tick, mo):
     with db() as _s:
         _rows = L.progress(_s)
     _seed_word = {"good": "yes", "meh": "partly", "bad": "no", None: "–"}
-    mo.vstack(
-        [
-            mo.md("### Progress"),
-            mo.ui.table(
+    mo.accordion(
+        {
+            "Progress": mo.ui.table(
                 [
                     {
-                        "current video": p.title[:60],
+                        "current video": p.title[:50],
                         "panel": "yes" if p.panel else "",
                         "Interests?": _seed_word[p.seed_label],
-                        "ranked labeled": f"{p.ranked_labeled}/{p.ranked}",
-                        "shown labeled": f"{p.shown_labeled}/{p.shown}",
-                        "filtered labeled": f"{p.filtered_labeled}/{p.filtered}",
-                        "good/meh/bad": "{good}/{meh}/{bad}".format(**p.counts),
+                        "ranked": f"{p.ranked_labeled}/{p.ranked}",
+                        "shown": f"{p.shown_labeled}/{p.shown}",
+                        "filtered": f"{p.filtered_labeled}/{p.filtered}",
+                        "g/m/b": "{good}/{meh}/{bad}".format(**p.counts),
                     }
                     for p in _rows
                 ],
@@ -252,8 +287,8 @@ def _(L, db, get_tick, mo):
                 pagination=False,
             )
             if _rows
-            else mo.md("No ranked computes yet: use the panel or `just recommend <id>`."),
-        ]
+            else mo.md("No ranked computes yet: use the panel or `just recommend <id>`.")
+        }
     )
     return
 
