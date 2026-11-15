@@ -79,6 +79,22 @@ label *args:
 label-app:
     uv run --group nb marimo run --headless --port 2718 notebooks/05_labeling.py
 
+# Password in ~/.sidekick/label-app-password (made on first run); setup: docs/setup-windows-wsl2.md §8
+# The labeling app for other devices on your network (e.g. the Chromebook), password-protected
+label-app-lan:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    home="${SIDEKICK_HOME:-$HOME/.sidekick}"
+    pw="$home/label-app-password"
+    if [ ! -s "$pw" ]; then
+        mkdir -p "$home"
+        (umask 077; python3 -c 'import secrets; print(secrets.token_urlsafe(9), end="")' > "$pw")
+        echo "Made a new password in $pw"
+    fi
+    echo "Password: $(cat "$pw")"
+    echo "On the other device open http://<this PC's IP>:2718 (this machine's addresses: $(hostname -I))"
+    exec uv run --group nb marimo run --headless --host 0.0.0.0 --port 2718 --token-password-file "$pw" notebooks/05_labeling.py
+
 # Set gate + Stage C thresholds from your labels (dry run; `just tune --write` saves them)
 [positional-arguments]
 tune *args:

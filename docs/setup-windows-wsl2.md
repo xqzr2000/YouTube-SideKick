@@ -134,3 +134,57 @@ panel: it shows progress (about 70 s cold, 20–40 s warm), then 10 cards.
 **After pulling changes,** run `just ext-win` again, then click the reload icon on the
 SideKick card in `chrome://extensions`. Backend changes only need `just dev` (it reloads by
 itself).
+
+## 8. Label from another device on your network (the Chromebook)
+
+The labeling app (`just label-app`) is a web page, so any device on the same Wi-Fi can use it
+while this PC runs it. Labels go straight into this machine's `~/.sidekick/sidekick.db`, so
+there is nothing to copy or merge. The other device needs only Chrome (no Crostini).
+
+**Once, on Windows** (Windows 11 22H2 or later):
+
+1. **Mirrored networking**, so devices on your network can reach WSL2 directly. Create or edit
+   `C:\Users\<you>\.wslconfig` (Notepad is fine) so it contains:
+
+   ```ini
+   [wsl2]
+   networkingMode=mirrored
+   ```
+
+   If the file already has a `[wsl2]` section, add the `networkingMode` line under it.
+2. **Restart WSL2.** In PowerShell: `wsl --shutdown`, then open your WSL2 terminal again.
+   `localhost:8000` (the extension's backend) keeps working in mirrored mode.
+3. **Open port 2718 in WSL's firewall.** In PowerShell **as administrator** (right-click →
+   Run as administrator):
+
+   ```powershell
+   New-NetFirewallHyperVRule -Name "SideKickLabeling" -DisplayName "SideKick labeling app" -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -Protocol TCP -LocalPorts 2718
+   ```
+
+   The long ID is WSL's fixed identifier in the Hyper-V firewall. To undo it later:
+   `Remove-NetFirewallHyperVRule -Name "SideKickLabeling"`.
+4. **Find this PC's address:** in PowerShell, `ipconfig`, the **IPv4 Address** under your Wi-Fi
+   or Ethernet adapter (for example `192.168.1.23`).
+
+**Each time:**
+
+```bash
+cd ~/YouTube-SideKick
+just label-app-lan
+```
+
+It prints the password, which is made on the first run and kept in
+`~/.sidekick/label-app-password`. On the Chromebook, open `http://<that IPv4 address>:2718` and
+type the password once; Chrome remembers the login. Ctrl+C in the WSL2 terminal stops it.
+
+- **Only on networks you trust.** The password keeps others on the same Wi-Fi out, but the page
+  is plain HTTP. Don't run it on public Wi-Fi.
+- **One app at a time.** `just label-app` and `just label-app-lan` both use port 2718, so stop
+  one before starting the other. From this PC, `http://localhost:2718` works with the LAN
+  version too (same password).
+- **Labeling from both devices at once** works (each browser is its own session, and the
+  database is opened per answer), but the two may show the same video; the newest answer
+  counts.
+- **Can't connect?** Check that both devices are on the same network, that the PC isn't asleep,
+  and that `just label-app-lan` is running; then recheck steps 1–3 (`wsl --shutdown` is needed
+  after editing `.wslconfig`).
