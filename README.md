@@ -59,6 +59,8 @@ enrichment budget that stays under 90 s ([E3 report](reports/E3-timing.md)).
 `just label-app` opens the labeling app (M6) at `http://localhost:2718`: it labels each
 current video's whole ranked pool, shown or not, with scores and ranks hidden. How it was
 designed and built, as a study note: [labeling app guide](docs/labeling-app-guide.md).
+`just label-app-lan` serves it, password-protected, to other devices on your network (setup:
+[WSL2 guide §8](docs/setup-windows-wsl2.md#8-label-from-another-device-on-your-network-the-chromebook)).
 
 **Backend API (M5, for the side panel; `just dev` serves it on port 8000):**
 - `POST /computes` starts a compute. Body: `{"video_id", "upnext": [...], "trigger"}`, where

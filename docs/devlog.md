@@ -48,6 +48,8 @@ evidence from real pages comes from the owner's runs.
 | #35 | M5 | M5 closed; ChromeOS paused; README status; this entry |
 | #36 | M6 | Labeling app (NB05, `just label-app`): whole ranked pools per current video, `sidekick.labeling` |
 | #37 | M6 | Study material: `docs/study-log.md` (data science used, by technique) and `docs/labeling-app-guide.md` with a minimal example app |
+| #38 | M6 | Study log reaches `main` (its commit landed after #37 was merged) |
+| #39 | M6 | `just label-app-lan`: the labeling app for the Chromebook over the home network, password-protected |
 
 ---
 
@@ -574,4 +576,27 @@ evidence from real pages comes from the owner's runs.
   study, so a second log records each technique used (what it is, how SideKick used it, the
   evidence, the lesson, where the code is), grouped by project stage, with a skills checklist.
   It gets new entries at the end of every session, next to this dev log.
+
+## Session 9 — 2026-11-15: labeling from the Chromebook
+
+- **Problem (owner):** labeling on the WSL2 PC takes a long time; he wants to label from the
+  Chromebook too.
+- **Options weighed:**
+  - **A:** serve the app from WSL2 to the home network;
+  - **B:** copy the database to the Chromebook and merge labels back.
+
+  The owner chose **A**. One database means nothing to sync or merge, and the Chromebook only
+  needs Chrome, so ChromeOS development stays paused.
+- **PR #39:** `just label-app-lan` runs marimo on `0.0.0.0:2718` with a password. The password
+  is made on the first run and kept in `~/.sidekick/label-app-password` (mode 600). Setup is in
+  the WSL2 guide §8: mirrored networking in `.wslconfig`, `wsl --shutdown`, and one Hyper-V
+  firewall rule for port 2718 scoped to WSL's VM-creator id.
+- **Checked in the sandbox** (headless Chrome against the recipe on a sample database):
+  - with no password or a wrong one, marimo redirects to its login page;
+  - with the password the app loads, and a label saved over the network address reaches the
+    database;
+  - the second run reuses the saved password.
+- **Dead end:** the first network-address test showed "kernel not found" with a WebSocket 403.
+  The cause was the sandbox's own outbound proxy, not marimo; with the proxy bypassed it
+  worked. Home network addresses (`192.168.x`) don't go through such a proxy.
 
