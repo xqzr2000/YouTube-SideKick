@@ -53,6 +53,7 @@ evidence from real pages comes from the owner's runs.
 | #40 | M6 | Labeling app for phones: one tap per answer, reasons used before as a pick list, card wraps on narrow screens |
 | #41 | M6 | `label-app-lan` prints ready-to-type `http://` links; setup notes on Safari's HTTPS upgrade and the PC's own address |
 | #42 | M6b | Evaluation dataset (`sidekick.rank`), NDCG@10 / P@10 / bad@10 on labeled pools, baselines, bootstrap, splits; `just eval` |
+| #43 | M6c | Learned rankers (logistic regression, LightGBM lambdarank) and diversity replay (caps, MMR, MMR window) on held-out current videos; `just eval --learn` |
 
 ---
 
@@ -660,4 +661,32 @@ evidence from real pages comes from the owner's runs.
   - **`just eval`:** all of this in a few tables; `--md` for the report, `--csv` for notebooks.
 - **Dead end:** the first single-feature baselines copied v0's order whenever a feature was
   missing, because a stable sort keeps the logged order. They now start from a fixed shuffle.
+- **First `just eval` on real labels** (13 complete pools, 394 labels: 192 good / 113 meh /
+  89 bad):
+  - v0 as shipped: NDCG@10 **0.816**, P@10 65 %, bad 16 %;
+  - **v0's score alone: 0.895**, 73 %, bad **5 %**;
+  - random order: 0.661;
+  - single signals: seed similarity alone 0.872, topic alone 0.847, interest alone 0.700.
+  - **Shipped − score only: −0.079 [−0.152, −0.019].** The diversity step costs ranking
+    quality and triples the bad share, which is the binaural-beats finding at scale.
+  - **Feature screen:** similarity and topic features lead (AUC 0.71–0.74); older videos are
+    better (0.64); long descriptions go with worse videos (0.34); interest similarity is
+    slightly negative (0.44).
+  - **Bug:** `ctx_news` was always 0, because the diversity `kind` is only lecture / other.
+    It now reads Stage C's news context.
+- **Protocol change (owner):** leave one current video out is the main test, the time split
+  the check. A 30 % time split would test on only 4 of the 13 current videos.
+- **PR #43 (M6c):**
+  - **`rank.rerank`:** replays the pick step from logged scores, groups and cached e5
+    vectors. Variants: score order, caps, MMR, and an MMR window. It also checks how often
+    the replay reproduces the logged top 10.
+  - **`mmr_select(window=δ)`:** each pick only considers videos within δ of the best
+    remaining score.
+  - **`rank.learn`:**
+    - models: logistic regression (median imputation + missing indicators + standardization,
+      C 0.3) and LightGBM lambdarank (linear label gains, shallow trees);
+    - protocol: leave one current video out, with the MMR window tuned inside each fold, plus
+      the time-split check;
+    - output: coefficients and gain shares averaged over the folds.
+  - **`just eval --learn`** prints it all. New dependency: `lightgbm`.
 

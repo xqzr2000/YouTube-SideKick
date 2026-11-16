@@ -75,7 +75,7 @@ FEATURES: dict[str, str] = {
     # context of the compute
     "interest_mode": "1 if the current video passed the interest gate",
     "ctx_lecture": "1 if lecture context (course caps)",
-    "ctx_news": "1 if news context",
+    "ctx_news": "1 if the current video is news (Stage C's news context)",
     "seed_foreign": "1 if the current video's title is mostly non-Latin script",
 }
 NAN = float("nan")
@@ -88,6 +88,7 @@ class Row:
     v0_score: float
     v0_rank: int | None  # 1-10 if shown, else None
     features: dict[str, float]
+    group: str = ""  # diversity group as logged (course channel, performer, or channel)
 
     @property
     def gain(self) -> int | None:
@@ -102,6 +103,8 @@ class Pool:
     ts: str
     trigger: str
     rows: list[Row] = field(default_factory=list)
+    kind: str = "other"  # lecture | other: which diversity cap applied
+    rep: str = ""  # representation Stage C used (embeddings model name), for MMR replay
 
     @property
     def labeled(self) -> list[Row]:
@@ -206,7 +209,7 @@ def features_for(
         "age_days_log": _log10(_age_days(video.get("published_at")), plus_one=True),
         "interest_mode": float(mode == "interest"),
         "ctx_lecture": float(kind == "lecture"),
-        "ctx_news": float(kind == "news"),
+        "ctx_news": float(bool(c.get("news_context"))),  # Stage C's news context (M6c fix)
         "seed_foreign": float(seed_foreign),
     }
 
@@ -267,8 +270,17 @@ def load_pools(store: Store, *, which: str = "newest") -> list[Pool]:
                 seed_foreign=foreign,
             )
             rank = r.get("rank")
+            pool.kind = r.get("kind") or pool.kind
+            pool.rep = pool.rep or (c_feats.get(vid) or {}).get("rep", "")
             pool.rows.append(
-                Row(vid, labels.get((seed, vid)), _num(score), int(rank) if rank else None, f)
+                Row(
+                    vid,
+                    labels.get((seed, vid)),
+                    _num(score),
+                    int(rank) if rank else None,
+                    f,
+                    group=str(r.get("group") or ""),
+                )
             )
         if pool.rows:
             pools.append(pool)

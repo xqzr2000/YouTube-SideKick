@@ -6,7 +6,7 @@ evidence it produced, the lesson, and where to read the code. It's written for s
 entry, open the file, rerun the notebook, try the exercise.
 
 Entries are grouped by the stage of a data-science project they belong to, not by date. Each
-ends with the session it came from (S1–S8, see the dev log). New entries are added at the end
+ends with the session it came from (S1–S10, see the dev log). New entries are added at the end
 of every session.
 
 **Contents**
@@ -23,8 +23,9 @@ of every session.
 10. [Retrieval and ranking](#10-retrieval-and-ranking)
 11. [Performance as a measured quantity](#11-performance-as-a-measured-quantity)
 12. [Offline evaluation of a ranker](#12-offline-evaluation-of-a-ranker)
-13. [Coming next (M6–M7)](#13-coming-next-m6m7)
-14. [Skills checklist](#14-skills-checklist)
+13. [Learning to rank (M6c)](#13-learning-to-rank-m6c)
+14. [Coming next (M6–M7)](#14-coming-next-m6m7)
+15. [Skills checklist](#15-skills-checklist)
 
 ---
 
@@ -458,17 +459,72 @@ of every session.
   *which* current video a row came from can look strong. The real test is on held-out
   current videos (13). (S10)
 
+### 12.8 Replaying a decision step offline
+- **What:** to compare alternatives to a step the system already took, redo that step from
+  what was logged, then check that the replay reproduces the logged output before trusting it.
+- **In SideKick:** the "pick 10" step (MMR + caps) is replayed from logged scores, groups and
+  cached e5 vectors. `just eval --learn` first prints how often the replay matches the logged
+  top 10.
+- **Where:** `src/sidekick/rank/rerank.py`. (S10)
+
+### 12.9 Diversity that can't promote outliers
+- **What:** MMR trades relevance for novelty with λ. In a pool that is mostly one topic, the
+  most novel item is the off-topic one. A **window** limits each pick to items within δ of the
+  best remaining score: variety can reorder close calls, not rescue weak ones.
+- **In SideKick:** `mmr_select(window=δ)`; δ = 0 is score order with caps, no window is plain
+  MMR. δ is chosen inside each training fold, never on the test video. (S10)
+
 ---
 
-## 13. Coming next (M6–M7)
+## 13. Learning to rank (M6c)
+
+### 13.1 Pointwise vs listwise
+- **What:** a **pointwise** model scores each item alone (here: logistic regression for
+  P(good)). A **listwise** model is trained on whole lists to optimize a ranking metric (here:
+  LightGBM `lambdarank`, which weights each pair of items by how much swapping them would
+  change NDCG).
+- **In SideKick:** both, on the same 31 features. `label_gain=[0, 1, 2]` makes LightGBM optimize
+  the same linear-gain NDCG that `just eval` reports.
+- **Where:** `src/sidekick/rank/learn.py`. (S10)
+
+### 13.2 Grouped cross-validation: leave one group out
+- **What:** split by the unit that is independent, not by row. Here a group is one current
+  video: its candidates were labeled in one context and one sitting.
+- **In SideKick:** 13 folds, each trained on 12 current videos and tested on the 13th; the
+  interval is a bootstrap over the 13 held-out results. A time split (older train, newer test)
+  is the second check. Leave-one-out became the main test because a 30 % time split would test
+  on only 4 current videos.
+- **Lesson:** a random row split would put candidates of the same current video on both sides
+  and overstate how well the model generalizes to a *new* video. (S10)
+
+### 13.3 Nested tuning
+- **What:** any setting chosen by looking at results (a threshold, a window, a penalty) must be
+  chosen inside each training fold, or the test score is optimistic.
+- **In SideKick:** the MMR window is picked per fold on its 12 training pools, and the chosen
+  values are printed per fold. Model settings (C = 0.3, shallow trees) were fixed in advance,
+  not tuned on these labels. (S10)
+
+### 13.4 Missing values
+- **What:** "not measured" is information too. Impute with the training median *and* add an
+  "is missing" indicator column; tree models (LightGBM) handle missing values natively.
+- **In SideKick:** Stage B facts are missing for videos that weren't enriched; the indicator
+  lets the model learn whether that itself matters. (S10)
+
+### 13.5 Reading what a model uses
+- **What:** standardized logistic-regression coefficients ("one SD more of this feature →
+  this much more log-odds of good") and LightGBM's share of split gain, each averaged over the
+  folds with its spread.
+- **Caveats:** correlated features share or swap credit (topic vs seed similarity); gain
+  shares say what the trees split on, not the direction; a feature that is constant within a
+  pool can't change the order within it, whatever its weight. (S10)
+
+---
+
+## 14. Coming next (M6–M7)
 
 Planned techniques, to be written up here as they're used:
 
-- **Group and time-ordered splits:** split by seed in time order, plus leave-one-seed-out, never
-  random rows. The splits exist since M6b (`time_split`, `leave_one_seed_out`); M6c is where
-  they're first used to train.
-- **Learning to rank:** logistic regression, then LightGBM with a ranking objective (lambdarank),
-  re-ranking logged pools against v0 (M6c).
+- **Shipping a learned ranker** behind v0 as a fallback, and checking it on new pools (M6c/M6d).
 - **Position bias** in clicks, and why clicks stay an online check (M6).
 - **Taste drift:** a time-decay half-life for feedback and profile lines (E5, M7).
 - **Persistence analysis:** why YouTube keeps resurfacing a disliked video (E6, M7).
@@ -476,7 +532,7 @@ Planned techniques, to be written up here as they're used:
 
 ---
 
-## 14. Skills checklist
+## 15. Skills checklist
 
 | Skill | Where you practised it | Status |
 |---|---|---|
@@ -491,5 +547,6 @@ Planned techniques, to be written up here as they're used:
 | Information retrieval (query generation, Rocchio, MMR) | 10 | done |
 | Regression and prediction intervals for an engineering budget | 11 | done |
 | Offline ranking evaluation (P@10, NDCG, paired bootstrap, baselines) | 12 | done |
-| Learning to rank, PU data, position bias | 13 | M6 |
-| Drift and persistence analysis, model cards | 13 | M7 |
+| Learning to rank, grouped CV, nested tuning | 13 | done (M6c) |
+| PU data, position bias | 14 | M6–M7 |
+| Drift and persistence analysis, model cards | 14 | M7 |

@@ -124,10 +124,13 @@ def mmr_select(
     cap: int,
     lam: float = LAMBDA,
     same_group_redundant: bool = True,
+    window: float | None = None,
 ) -> tuple[list[int], dict[int, dict]]:
     """Indices in pick order, plus per-index info (``mmr``, ``redundancy``, ``capped``).
     ``same_group_redundant=False`` (lecture context) measures redundancy only against picks
-    from other groups."""
+    from other groups. ``window`` (M6c): each step only considers videos whose score is within
+    ``window`` of the best one still available, so variety can reorder close calls but can't
+    promote a weak outlier (``None`` = plain MMR, ``0`` = score order with caps)."""
     n = len(scores)
     order: list[int] = []
     info: dict[int, dict] = {}
@@ -137,9 +140,15 @@ def mmr_select(
     capped: set[int] = set()
     while left and len(order) < k:
         best, best_val, best_red = None, -1e9, 0.0
+        open_ = [i for i in left if count[groups[i]] < cap]
+        floor = (
+            max((scores[i] for i in open_), default=0.0) - window if window is not None else None
+        )
         for i in sorted(left):
             if count[groups[i]] >= cap:
                 capped.add(i)
+                continue
+            if floor is not None and scores[i] < floor - 1e-12:
                 continue
             red = (
                 max(
