@@ -254,10 +254,8 @@ def caps_report(store: Store, *, min_coverage: float = 1.0, md: bool = False) ->
     lines += _table(["held-out", "NDCG@10", "P@10 (good)", "bad@10"], rows, md)
     nd = {k: [r["ndcg"] for r in v] for k, v in ev.results.items()}
     lines.append(
-        "chosen − shipped: "
-        + _fmt(
-            M.paired_diff(nd["chosen caps (nested)"], nd["shipped caps (performer 2, course 5)"])
-        )
+        "chosen − M5 caps: "
+        + _fmt(M.paired_diff(nd["chosen caps (nested)"], nd["M5 caps (performer 2, course 5)"]))
     )
     lines.append(
         "no caps − chosen: " + _fmt(M.paired_diff(nd["no caps"], nd["chosen caps (nested)"]))

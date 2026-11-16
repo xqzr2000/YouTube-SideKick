@@ -447,3 +447,16 @@ def test_non_english_video_searches_in_english(store, tmp_path):
     assert f.searched == ["Bayesian priors"]  # English words only (no e5 in tests)
     methods = [m for lg in res.rounds for _, m, _ in lg.queries]
     assert methods == ["english"]
+
+
+def test_m6c_defaults_no_performer_cap_no_mmr(store, tmp_path):
+    """M6c: score order with the course cap only; the M5 caps stay available via Config."""
+    from sidekick.recommend import Config
+
+    cfg = Config()
+    assert cfg.mmr is False and cfg.caps == {"lecture": 5, "other": None}
+    assert dv.CAPS_M5 == {"lecture": 5, "other": 2}
+    res, _ = run(store, tmp_path, min_pool=3, top_k=4)
+    shown = [r for r in res.ranked if r.rank is not None]
+    assert [r.score for r in shown] == sorted((r.score for r in shown), reverse=True)
+    assert not any(r.reason == "group_cap" for r in res.ranked if r.rank is None)

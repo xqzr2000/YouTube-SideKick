@@ -177,5 +177,5 @@ def test_variety_and_caps_report(store):
     from sidekick.rank.__main__ import caps_report
 
     text = "\n".join(caps_report(store))
-    assert "Cap grid on all 8 pools" in text and "chosen − shipped" in text
+    assert "Cap grid on all 8 pools" in text and "chosen − M5 caps" in text
     assert "performer 2, course 5" in text

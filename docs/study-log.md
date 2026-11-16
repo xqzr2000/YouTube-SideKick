@@ -24,7 +24,7 @@ of every session.
 11. [Performance as a measured quantity](#11-performance-as-a-measured-quantity)
 12. [Offline evaluation of a ranker](#12-offline-evaluation-of-a-ranker)
 13. [Learning to rank (M6c)](#13-learning-to-rank-m6c)
-14. [Coming next (M6–M7)](#14-coming-next-m6m7)
+14. [Coming next (M7)](#14-coming-next-m7)
 15. [Skills checklist](#15-skills-checklist)
 
 ---
@@ -549,11 +549,13 @@ of every session.
 
 ---
 
-## 14. Coming next (M6–M7)
+## 14. Coming next (M7)
 
 Planned techniques, to be written up here as they're used:
 
-- **Shipping a learned ranker** behind v0 as a fallback, and checking it on new pools (M6c/M6d).
+- **Online check of the M6 change** (no performer cap): label a few new pools and compare
+  NDCG and the bad share with the offline estimate; watch 👎 notes for "too repetitive".
+- **Retrying learned rankers** once about 30 current videos are labeled.
 - **Position bias** in clicks, and why clicks stay an online check (M6).
 - **Taste drift:** a time-decay half-life for feedback and profile lines (E5, M7).
 - **Persistence analysis:** why YouTube keeps resurfacing a disliked video (E6, M7).
