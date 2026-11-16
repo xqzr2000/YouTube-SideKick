@@ -138,6 +138,68 @@ def report(store: Store, *, min_coverage: float = 1.0, which: str = "newest", md
     return lines
 
 
+def learn_report(store: Store, *, min_coverage: float = 1.0, md: bool = False) -> list[str]:
+    """M6c: learned rankers and pickers on held-out current videos."""
+    from sidekick.rank import learn as Ln
+    from sidekick.rank import rerank as R
+
+    pools = M.evaluable(load_pools(store), min_coverage=min_coverage)
+    if len(pools) < 3:
+        return ["", "Learning needs at least 3 fully labeled pools."]
+    vectors = R.Vectors(store)
+    lines = [
+        "",
+        f"== Replay check: v0 + caps + MMR reproduces the logged top 10 on "
+        f"{R.agreement_with_log(pools, vectors):.0%} of pools ==",
+    ]
+
+    def table(ev: Ln.Eval) -> list[str]:
+        rows = []
+        for name, res in ev.results.items():
+            rows.append(
+                [
+                    name,
+                    _fmt(M.bootstrap([r["ndcg"] for r in res])),
+                    _fmt(M.bootstrap([r["p"] for r in res]), pct=True),
+                    _fmt(M.bootstrap([r["bad"] for r in res]), pct=True),
+                ]
+            )
+        return _table(["ranker", "NDCG@10", "P@10 (good)", "bad@10"], rows, md)
+
+    loo = Ln.leave_one_out(pools, vectors)
+    lines += ["", f"== Leave one current video out ({len(loo.seeds)} folds) =="]
+    lines += table(loo)
+    nd = {k: [r["ndcg"] for r in v] for k, v in loo.results.items()}
+    lines += ["", "== Paired differences in NDCG@10 (leave one out) =="]
+    for a, b in (
+        ("v0 + caps", "v0 + caps + MMR (shipped)"),
+        ("v0 score only", "v0 + caps"),
+        ("logistic regression + caps", "v0 + caps"),
+        ("LightGBM lambdarank + caps", "v0 + caps"),
+        ("LightGBM lambdarank + caps", "logistic regression + caps"),
+    ):
+        lines.append(f"{a} − {b}: {_fmt(M.paired_diff(nd[a], nd[b]))}")
+    ws = ["plain" if w is None else f"{w:g}" for w in loo.windows]
+    lines.append(f"MMR window chosen per fold (on its training pools): {', '.join(ws)}")
+
+    ts = Ln.time_split_eval(pools, vectors)
+    n_test = len(ts.seeds)
+    lines += ["", f"== Time split check: {len(pools) - n_test} older train, {n_test} newer test =="]
+    lines += table(ts)
+
+    lines += ["", "== What the models use (mean over leave-one-out folds) =="]
+    lr = Ln.mean_importance(loo.importance["logistic regression"])[:12]
+    gb = Ln.mean_importance(loo.importance["LightGBM lambdarank"])[:12]
+    rows = [
+        [a[0], f"{a[1]:+.2f} ± {a[2]:.2f}", b[0], f"{b[1]:.0%} ± {b[2]:.0%}"]
+        for a, b in zip(lr, gb, strict=True)
+    ]
+    lines += _table(
+        ["logistic regression", "coefficient (per SD)", "LightGBM", "share of gain"], rows, md
+    )
+    return lines
+
+
 def write_csv(store: Store, path: Path, which: str) -> int:
     recs = to_records(load_pools(store, which=which))
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -155,6 +217,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--all", action="store_true", help="every ranked compute, not the newest")
     ap.add_argument("--md", action="store_true", help="Markdown tables")
     ap.add_argument("--csv", type=Path, help="write the dataset (one row per candidate)")
+    ap.add_argument("--learn", action="store_true", help="M6c: learned rankers, leave one out")
     args = ap.parse_args(argv)
     which = "all" if args.all else "newest"
     paths = ensure_home()
@@ -165,6 +228,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         for line in report(store, min_coverage=args.min_coverage, which=which, md=args.md):
             print(line)
+        if args.learn:
+            for line in learn_report(store, min_coverage=args.min_coverage, md=args.md):
+                print(line)
     return 0
 
 

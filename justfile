@@ -79,7 +79,7 @@ label *args:
 label-app:
     uv run --group nb marimo run --headless --port 2718 notebooks/05_labeling.py
 
-# M6b: NDCG@10 / P@10 of v0 and baselines on fully labeled pools (`--csv PATH` exports the dataset)
+# M6b/M6c: NDCG@10 of v0, baselines (and with --learn, learned rankers) on labeled pools
 [positional-arguments]
 eval *args:
     uv run python -m sidekick.rank "$@"
