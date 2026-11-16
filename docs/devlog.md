@@ -51,6 +51,7 @@ evidence from real pages comes from the owner's runs.
 | #38 | M6 | Study log reaches `main` (its commit landed after #37 was merged) |
 | #39 | M6 | `just label-app-lan`: the labeling app for the Chromebook over the home network, password-protected |
 | #40 | M6 | Labeling app for phones: one tap per answer, reasons used before as a pick list, card wraps on narrow screens |
+| #41 | M6 | `label-app-lan` prints ready-to-type `http://` links; setup notes on Safari's HTTPS upgrade and the PC's own address |
 
 ---
 
@@ -621,4 +622,17 @@ evidence from real pages comes from the owner's runs.
 - **Design note:** the one-tap callback is created inside the view cell, so it always labels
   the item that cell drew. A guard ignores a second tap on the same item. The labeling-app
   guide has a new section on form vs one-tap.
+- **First real iPhone run** (owner, home Wi-Fi):
+  - **Windows Chrome:** `http://localhost:2718` works. marimo's printed `http://0.0.0.0:2718`
+    link doesn't, because 0.0.0.0 is a listen address, not one a browser can open.
+  - **The PC's own address** (`http://10.0.0.165:2718`) fails from the PC itself. That's by
+    design in mirrored mode unless `hostAddressLoopback=true`, so it told us nothing about the
+    phone.
+  - **Safari** at first said "couldn't establish a secure connection to the server": it had
+    tried HTTPS. Typing `http://` in full fixed it.
+- **PR #41:** `just label-app-lan` now prints the password, the `localhost` link, and the phone
+  link with `http://` written out, using the IPv4 of the default route. The WSL2 guide §8 gets
+  both notes.
+- **Lesson:** a failed test from the wrong place looks like a failure of the thing under
+  test. Test reachability from the device that will actually connect.
 

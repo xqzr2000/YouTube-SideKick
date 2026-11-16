@@ -178,7 +178,9 @@ It prints the password, which is made on the first run and kept in
 type the password once; Chrome remembers the login. Ctrl+C in the WSL2 terminal stops it.
 
 - **iPhone / iPad / Android:** the same address works in Safari or Chrome on your home Wi-Fi
-  (not over mobile data). The page fits a phone: the thumbnail sits above the text, and one tap
+  (not over mobile data). **Type `http://` in full** (`http://10.0.0.165:2718`, say). Without
+  it Safari tries HTTPS first and shows "couldn't establish a secure connection to the server",
+  because the app speaks plain HTTP. The page fits a phone: the thumbnail sits above the text, and one tap
   on good / meh / bad / skip saves. Pick a reason you used before from the list instead of
   typing. **Share → Add to Home Screen** in Safari gives it an icon.
 - **Only on networks you trust.** The password keeps others on the same Wi-Fi out, but the page
@@ -189,6 +191,10 @@ type the password once; Chrome remembers the login. Ctrl+C in the WSL2 terminal 
 - **Labeling from both devices at once** works (each browser is its own session, and the
   database is opened per answer), but the two may show the same video; the newest answer
   counts.
+- **On the PC itself, use `http://localhost:2718`**, not the PC's own network address. In
+  mirrored mode Windows can't reach WSL through its own IPv4 address unless `.wslconfig` also
+  has `[experimental]` `hostAddressLoopback=true`, so a test of `http://10.0.0.x:2718` from
+  the PC fails even when phones can connect. Test the network address from the phone.
 - **Can't connect?** Check that both devices are on the same network, that the PC isn't asleep,
   and that `just label-app-lan` is running; then recheck steps 1–3 (`wsl --shutdown` is needed
   after editing `.wslconfig`).
