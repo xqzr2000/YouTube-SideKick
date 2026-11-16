@@ -84,7 +84,7 @@ def pick(
     if not caps and not mmr:
         return [pool.rows[i] for i in by_score]
     groups = [r.group or r.video_id for r in pool.rows]
-    table = {**dv.CAPS, **(cap_values or {})}
+    table = {**dv.CAPS_M5, **(cap_values or {})}  # the logged pools were picked with M5 caps
     cap_v = table.get(pool.kind, table["other"])
     cap = cap_v if caps and cap_v is not None else 10**6
     order, _ = dv.mmr_select(

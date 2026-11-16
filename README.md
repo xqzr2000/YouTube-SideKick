@@ -15,7 +15,7 @@ On the surface, SideKick is a browser extension. At its core, it's a data scienc
 
 ## Status
 
-The extension works end to end (M0–M5 done). The data-science half continues:
+The extension works end to end, and M0–M6 are done. M7 is next:
 
 - **M1–M2:** parsers, polite fetcher, profile, SQLite store, Stage A/B filters, enrichment
   (NB01, NB02).
@@ -27,7 +27,10 @@ The extension works end to end (M0–M5 done). The data-science half continues:
   English and cross-lingual searches for non-English videos.
 - **First result ([E4 part 1](reports/E4-ranker.md)):** on 7 seed videos, 66 % of SideKick's
   top 10 were labeled good, against 49 % of YouTube's own first 10 up-next (bad: 14 % vs 31 %).
-- **Next, M6:** a labeling app, offline evaluation (NDCG@10) and a learned ranker. **M7:**
+- **M6:** a labeling app (also for phones), offline evaluation (NDCG@10) and learned
+  rankers. The learned rankers didn't beat v0 on held-out videos; dropping the performer cap
+  and MMR did (NDCG@10 0.825 → 0.895, bad 15 % → 5 %; [E4 part 2](reports/E4-ranker.md)).
+- **Next, M7:**
   taste drift and why YouTube keeps resurfacing some videos (E5, E6), and a model card.
 
 See `docs/` for setup:

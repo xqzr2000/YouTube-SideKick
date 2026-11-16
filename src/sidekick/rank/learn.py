@@ -187,8 +187,8 @@ def mean_importance(imps: list[dict[str, float]]) -> list[tuple[str, float, floa
 
 # -- M6c part 2: cap sizes (Russell chose option B, 2026-11-15) ---------------------------------
 
-PERFORMER_CAPS: Sequence[int | None] = (2, 3, 4, None)  # "other" context; shipped: 2
-LECTURE_CAPS: Sequence[int | None] = (5, 8, None)  # lecture context; shipped: 5
+PERFORMER_CAPS: Sequence[int | None] = (2, 3, 4, None)  # "other" context; M5: 2, M6c: none
+LECTURE_CAPS: Sequence[int | None] = (5, 8, None)  # lecture context; M5 and M6c: 5
 TOLERANCE = 0.01  # prefer the tightest caps within this much training NDCG of the best
 
 
@@ -243,7 +243,9 @@ def caps_leave_one_out(pools: list[Pool]) -> CapEval:
     """Nested choice of caps per fold, scored on the held-out current video, next to the
     shipped caps and no caps."""
     out = CapEval()
-    shipped = {"other": dv_caps("other"), "lecture": dv_caps("lecture")}
+    from sidekick.recommend import diversity as dv
+
+    m5 = dict(dv.CAPS_M5)
     for _, train, test in M.leave_one_seed_out(pools):
         if not train or not test:
             continue
@@ -251,15 +253,9 @@ def caps_leave_one_out(pools: list[Pool]) -> CapEval:
         out.chosen.append(c)
         for name, caps in (
             ("chosen caps (nested)", c),
-            ("shipped caps (performer 2, course 5)", shipped),
+            ("M5 caps (performer 2, course 5)", m5),
             ("no caps", {"other": None, "lecture": None}),
         ):
             rank = R.picker(R.v0_scores, None, mmr=False, cap_values=caps)
             out.results.setdefault(name, []).extend(M.per_pool(test, rank))
     return out
-
-
-def dv_caps(kind: str) -> int:
-    from sidekick.recommend import diversity as dv
-
-    return dv.CAPS[kind]

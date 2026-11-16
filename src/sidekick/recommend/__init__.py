@@ -51,8 +51,9 @@ class Config:
     deadline_s: float = 60.0  # don't start round 2 or 3 after this many seconds
     enrich_cap: int = 25  # candidates considered for enrichment per compute (cache hits count)
     top_k: int = 10
-    lam: float = dv.LAMBDA  # MMR: relevance vs. variety
-    caps: dict[str, int] = field(default_factory=lambda: dict(dv.CAPS))
+    lam: float = dv.LAMBDA  # MMR: relevance vs. variety (only when ``mmr``)
+    caps: dict[str, int | None] = field(default_factory=lambda: dict(dv.CAPS))
+    mmr: bool = False  # M6c: MMR added nothing on held-out labels; caps alone pick the 10
     snowball_from: int = 2  # best survivors whose up-next is added in rounds 2-3
     cache_ttl: timedelta | None = None  # enrichment cache age; timedelta(0) = cold (E3)
 
@@ -426,14 +427,15 @@ def _rank(store, pool: _Pool, anchor, res: Result, cfg: Config, tagger, cid, vid
         return []
     rows.sort(key=lambda r: (-r.score, r.candidate.video_id))
     ids = [r.candidate.video_id for r in rows]
-    vecs = space.videos(store, ids)[1] if space is not None else None
+    vecs = space.videos(store, ids)[1] if (space is not None and cfg.mmr) else None
     titles, channels = [], []
     for r in rows:
         meta = store.get_video(r.candidate.video_id) or {}
         titles.append(meta.get("title") or r.candidate.title)
         channels.append(meta.get("channel") or r.candidate.channel)
     groups = dv.assign_groups(titles, channels, res.kind, tagger)
-    cap = cfg.caps.get(res.kind, cfg.caps.get("other", 2))
+    cap = cfg.caps.get(res.kind, cfg.caps.get("other"))
+    cap = 10**6 if cap is None else cap  # None = no cap
     order, info = dv.mmr_select(
         [r.score for r in rows],
         vecs,

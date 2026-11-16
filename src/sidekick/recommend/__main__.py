@@ -56,7 +56,14 @@ def _src(lists: list[str]) -> str:
 def print_result(res: Result, show: int, out=print) -> None:
     if res.backfill_skipped:
         out(f"backfill: skipped ({res.backfill_skipped})")
-    cap = {"lecture": "same course ≤ 5", "other": "same performer/show ≤ 2"}.get(res.kind, "")
+    from sidekick.recommend import diversity as dv
+
+    c = dv.CAPS.get(res.kind)
+    cap = (
+        "no cap"
+        if c is None
+        else (f"same course ≤ {c}" if res.kind == "lecture" else f"same performer/show ≤ {c}")
+    )
     out(f"\ntop {len(res.shown)} (of {len(res.ranked)} survivors; {res.kind} context: {cap}):")
     out(
         f"  {'#':>2} {'score':>5} {'topic':>5} {'seed':>5} {'int':>5} {'rec':>4} {'src':<5} "

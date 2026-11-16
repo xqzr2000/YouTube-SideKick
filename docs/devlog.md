@@ -55,6 +55,7 @@ evidence from real pages comes from the owner's runs.
 | #42 | M6b | Evaluation dataset (`sidekick.rank`), NDCG@10 / P@10 / bad@10 on labeled pools, baselines, bootstrap, splits; `just eval` |
 | #43 | M6c | Learned rankers (logistic regression, LightGBM lambdarank) and diversity replay (caps, MMR, MMR window) on held-out current videos; `just eval --learn` |
 | #44 | M6c | Cap grid: replay performer / course caps, nested choice per fold (tightest within 0.01 NDCG), variety next to NDCG; `just eval --caps` |
+| #45 | M6 | Ship the chosen pick step (score order, course cap 5, no performer cap, MMR off); E4 part 2 report; M6 closed |
 
 ---
 
@@ -714,4 +715,19 @@ evidence from real pages comes from the owner's runs.
   - it chooses caps inside each leave-one-out round: the tightest within 0.01 NDCG of the best
     on the training pools;
   - it compares the chosen caps with the shipped caps and no caps on the held-out video.
+- **`just eval --caps` on real labels:**
+  - **performer caps** 2 / 3 / 4 / none give NDCG@10 0.825 / 0.845 / 0.851 / **0.895**, and
+    bad@10 15 / 12 / 12 / **5 %**;
+  - **variety** (groups in the top 10) falls 9.0 / 8.3 / 7.8 / 6.1, and the largest group
+    grows 1.8 → 4.8;
+  - **the course cap** (5 / 8 / none) never binds;
+  - **the nested choice** was **no performer cap, course 5** in all 13 rounds: +0.070
+    [0.014, 0.140] held out.
+- **PR #45, shipped:**
+  - `diversity.CAPS = {"lecture": 5, "other": None}` (the M5 caps are kept as `CAPS_M5`);
+  - `Config.mmr = False`, so the pick is plain score order with the course cap. That is the
+    configuration measured; MMR stays available but untested without caps;
+  - the replay of logged pools uses `CAPS_M5`, because that's what picked them;
+  - `just recommend` prints the cap in force;
+  - `reports/E4-ranker.md` part 2 written up. **M6 closed.**
 
