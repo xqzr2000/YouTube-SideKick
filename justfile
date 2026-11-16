@@ -91,7 +91,7 @@ label-app-lan:
         (umask 077; python3 -c 'import secrets; print(secrets.token_urlsafe(9), end="")' > "$pw")
         echo "Made a new password in $pw"
     fi
-    lan="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')"
+    lan="$( (ip -4 route get 1.1.1.1 2>/dev/null || true) | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')"
     echo "Password:      $(cat "$pw")"
     echo "On this PC:    http://localhost:2718"
     echo "Phone/laptop:  http://${lan:-<this PC's IPv4 from ipconfig>}:2718   (type the http:// part; Safari tries https otherwise)"
