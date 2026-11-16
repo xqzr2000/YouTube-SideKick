@@ -200,6 +200,71 @@ def learn_report(store: Store, *, min_coverage: float = 1.0, md: bool = False) -
     return lines
 
 
+def caps_report(store: Store, *, min_coverage: float = 1.0, md: bool = False) -> list[str]:
+    """M6c part 2: how loose can the diversity caps get before they cost anything?"""
+    from sidekick.rank import learn as Ln
+
+    pools = M.evaluable(load_pools(store), min_coverage=min_coverage)
+    if len(pools) < 3:
+        return ["", "The cap grid needs at least 3 fully labeled pools."]
+    n_lec = sum(p.kind == "lecture" for p in pools)
+    lines = [
+        "",
+        f"== Cap grid on all {len(pools)} pools ({n_lec} in a lecture context), v0 scores, "
+        "no MMR (descriptive) ==",
+    ]
+    rows = []
+    for c in Ln.cap_grid():
+        s = Ln.score_caps(pools, c)
+        rows.append(
+            [
+                Ln.cap_label(c),
+                f"{s['ndcg']:.3f}",
+                f"{s['p'] * 100:.0f} %",
+                f"{s['bad'] * 100:.0f} %",
+                f"{s['groups']:.1f}",
+                f"{s['largest']:.1f}",
+            ]
+        )
+    lines += _table(
+        ["caps", "NDCG@10", "P@10", "bad@10", "groups in top 10", "largest group"], rows, md
+    )
+    ev = Ln.caps_leave_one_out(pools)
+    lines += [
+        "",
+        f"== Caps chosen inside each leave-one-out fold (tightest within "
+        f"{Ln.TOLERANCE} NDCG of the best on its training pools) ==",
+    ]
+    counts: dict[str, int] = {}
+    for c in ev.chosen:
+        counts[Ln.cap_label(c)] = counts.get(Ln.cap_label(c), 0) + 1
+    lines.append(
+        "chosen: " + "; ".join(f"{k} ×{v}" for k, v in sorted(counts.items(), key=lambda t: -t[1]))
+    )
+    rows = []
+    for name, res in ev.results.items():
+        rows.append(
+            [
+                name,
+                _fmt(M.bootstrap([r["ndcg"] for r in res])),
+                _fmt(M.bootstrap([r["p"] for r in res]), pct=True),
+                _fmt(M.bootstrap([r["bad"] for r in res]), pct=True),
+            ]
+        )
+    lines += _table(["held-out", "NDCG@10", "P@10 (good)", "bad@10"], rows, md)
+    nd = {k: [r["ndcg"] for r in v] for k, v in ev.results.items()}
+    lines.append(
+        "chosen − shipped: "
+        + _fmt(
+            M.paired_diff(nd["chosen caps (nested)"], nd["shipped caps (performer 2, course 5)"])
+        )
+    )
+    lines.append(
+        "no caps − chosen: " + _fmt(M.paired_diff(nd["no caps"], nd["chosen caps (nested)"]))
+    )
+    return lines
+
+
 def write_csv(store: Store, path: Path, which: str) -> int:
     recs = to_records(load_pools(store, which=which))
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -218,6 +283,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--md", action="store_true", help="Markdown tables")
     ap.add_argument("--csv", type=Path, help="write the dataset (one row per candidate)")
     ap.add_argument("--learn", action="store_true", help="M6c: learned rankers, leave one out")
+    ap.add_argument("--caps", action="store_true", help="M6c: replay a grid of diversity caps")
     args = ap.parse_args(argv)
     which = "all" if args.all else "newest"
     paths = ensure_home()
@@ -230,6 +296,9 @@ def main(argv: list[str] | None = None) -> int:
             print(line)
         if args.learn:
             for line in learn_report(store, min_coverage=args.min_coverage, md=args.md):
+                print(line)
+        if args.caps:
+            for line in caps_report(store, min_coverage=args.min_coverage, md=args.md):
                 print(line)
     return 0
 
