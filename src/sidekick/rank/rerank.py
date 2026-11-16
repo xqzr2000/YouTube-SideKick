@@ -75,14 +75,18 @@ def pick(
     mmr: bool = True,
     window: float | None = None,
     k: int = K,
+    cap_values: dict[str, int | None] | None = None,
 ) -> list[Row]:
-    """The pool's rows in shown order under one picking rule."""
+    """The pool's rows in shown order under one picking rule. ``cap_values`` overrides the
+    shipped caps per context (``{"lecture": 8, "other": None}``; None = no cap)."""
     idx = list(range(len(pool.rows)))
     by_score = sorted(idx, key=lambda i: (-scores[i], pool.rows[i].video_id))
     if not caps and not mmr:
         return [pool.rows[i] for i in by_score]
     groups = [r.group or r.video_id for r in pool.rows]
-    cap = dv.CAPS.get(pool.kind, dv.CAPS["other"]) if caps else 10**6
+    table = {**dv.CAPS, **(cap_values or {})}
+    cap_v = table.get(pool.kind, table["other"])
+    cap = cap_v if caps and cap_v is not None else 10**6
     order, _ = dv.mmr_select(
         list(scores),
         vecs if mmr else None,
@@ -110,12 +114,15 @@ def picker(
     caps: bool = True,
     mmr: bool = True,
     window: float | None = None,
+    cap_values: dict[str, int | None] | None = None,
 ) -> Callable[[Pool], list[Row]]:
     """A ranker (pool → ordered rows) for ``metrics.per_pool``."""
 
     def rank(pool: Pool) -> list[Row]:
         vecs = vectors.for_pool(pool) if (vectors is not None and mmr) else None
-        return pick(pool, scorer(pool), vecs, caps=caps, mmr=mmr, window=window)
+        return pick(
+            pool, scorer(pool), vecs, caps=caps, mmr=mmr, window=window, cap_values=cap_values
+        )
 
     return rank
 
@@ -130,3 +137,13 @@ def agreement_with_log(pools: list[Pool], vectors: Vectors) -> float:
         rows = picker(v0_scores, vectors)(p)[:K]
         hits += {r.video_id for r in rows} == {r.video_id for r in p.rows if r.v0_rank}
     return hits / len(pools)
+
+
+def variety(ordered: list[Row], k: int = K) -> tuple[int, int]:
+    """List-level variety of a top k: (distinct groups, size of the largest group). Item
+    labels can't see this; it's reported next to NDCG so the trade-off is visible."""
+    counts: dict[str, int] = {}
+    for r in ordered[:k]:
+        g = r.group or r.video_id
+        counts[g] = counts.get(g, 0) + 1
+    return len(counts), max(counts.values(), default=0)

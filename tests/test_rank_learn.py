@@ -153,3 +153,29 @@ def test_learn_report(store):
 def test_learn_report_needs_pools(tmp_path):
     with Store(tmp_path / "empty.db") as s:
         assert "at least 3" in learn_report(s)[-1]
+
+
+def test_cap_grid_order_and_choice(store):
+    grid = Ln.cap_grid()
+    assert grid[0] == {"other": 2, "lecture": 5} and grid[-1] == {"other": None, "lecture": None}
+    assert len(grid) == len(Ln.PERFORMER_CAPS) * len(Ln.LECTURE_CAPS)
+    pools = M.evaluable(load_pools(store))
+    # five groups of ~4 videos each: performer 2 binds, so looser caps can only help or tie
+    tight = Ln.score_caps(pools, grid[0])
+    loose = Ln.score_caps(pools, grid[-1])
+    assert loose["ndcg"] >= tight["ndcg"] - 1e-9 and loose["largest"] >= tight["largest"]
+    assert tight["largest"] <= 2
+    c = Ln.choose_caps(pools, tolerance=1.0)  # everything is "close enough": the tightest wins
+    assert c == grid[0]
+    ev = Ln.caps_leave_one_out(pools)
+    assert len(ev.chosen) == 8 and all(len(v) == 8 for v in ev.results.values())
+
+
+def test_variety_and_caps_report(store):
+    rows = [Row(f"v{i}", "good", 0, None, {}, group="g" if i < 3 else "") for i in range(5)]
+    assert R.variety(rows) == (3, 3)  # g, v3, v4
+    from sidekick.rank.__main__ import caps_report
+
+    text = "\n".join(caps_report(store))
+    assert "Cap grid on all 8 pools" in text and "chosen − shipped" in text
+    assert "performer 2, course 5" in text

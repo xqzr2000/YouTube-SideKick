@@ -183,3 +183,83 @@ def mean_importance(imps: list[dict[str, float]]) -> list[tuple[str, float, floa
         vals = [d.get(f, 0.0) for d in imps]
         out.append((f, float(np.mean(vals)), float(np.std(vals))))
     return sorted(out, key=lambda t: -abs(t[1]) if not math.isnan(t[1]) else 0)
+
+
+# -- M6c part 2: cap sizes (Russell chose option B, 2026-11-15) ---------------------------------
+
+PERFORMER_CAPS: Sequence[int | None] = (2, 3, 4, None)  # "other" context; shipped: 2
+LECTURE_CAPS: Sequence[int | None] = (5, 8, None)  # lecture context; shipped: 5
+TOLERANCE = 0.01  # prefer the tightest caps within this much training NDCG of the best
+
+
+def cap_grid() -> list[dict[str, int | None]]:
+    """Tightest first (more variety first), so ties and near-ties go to tighter caps."""
+    grid = [{"other": o, "lecture": lec} for o in PERFORMER_CAPS for lec in LECTURE_CAPS]
+    big = 10**6
+    return sorted(
+        grid, key=lambda c: ((c["other"] or big) + (c["lecture"] or big), c["other"] or big)
+    )
+
+
+def cap_label(c: dict[str, int | None]) -> str:
+    def f(v):
+        return "none" if v is None else str(v)
+
+    return f"performer {f(c['other'])}, course {f(c['lecture'])}"
+
+
+def score_caps(pools: list[Pool], caps: dict[str, int | None]) -> dict[str, float]:
+    """Mean NDCG@10 / P@10 / bad@10 and variety of v0 + these caps (no MMR) over ``pools``."""
+    rank = R.picker(R.v0_scores, None, mmr=False, cap_values=caps)
+    res = M.per_pool(pools, rank)
+    var = [R.variety(rank(p)) for p in pools]
+    return {
+        "ndcg": float(np.mean([r["ndcg"] for r in res])),
+        "p": float(np.mean([r["p"] for r in res])),
+        "bad": float(np.mean([r["bad"] for r in res])),
+        "groups": float(np.mean([v[0] for v in var])),
+        "largest": float(np.mean([v[1] for v in var])),
+    }
+
+
+def choose_caps(train: list[Pool], tolerance: float = TOLERANCE) -> dict[str, int | None]:
+    """The tightest caps whose training NDCG is within ``tolerance`` of the best."""
+    grid = cap_grid()
+    scores = [score_caps(train, c)["ndcg"] for c in grid]
+    best = max(scores)
+    for c, v in zip(grid, scores, strict=True):
+        if v >= best - tolerance:
+            return c
+    return grid[-1]
+
+
+@dataclass
+class CapEval:
+    chosen: list[dict[str, int | None]] = field(default_factory=list)
+    results: dict[str, list[dict]] = field(default_factory=dict)
+
+
+def caps_leave_one_out(pools: list[Pool]) -> CapEval:
+    """Nested choice of caps per fold, scored on the held-out current video, next to the
+    shipped caps and no caps."""
+    out = CapEval()
+    shipped = {"other": dv_caps("other"), "lecture": dv_caps("lecture")}
+    for _, train, test in M.leave_one_seed_out(pools):
+        if not train or not test:
+            continue
+        c = choose_caps(train)
+        out.chosen.append(c)
+        for name, caps in (
+            ("chosen caps (nested)", c),
+            ("shipped caps (performer 2, course 5)", shipped),
+            ("no caps", {"other": None, "lecture": None}),
+        ):
+            rank = R.picker(R.v0_scores, None, mmr=False, cap_values=caps)
+            out.results.setdefault(name, []).extend(M.per_pool(test, rank))
+    return out
+
+
+def dv_caps(kind: str) -> int:
+    from sidekick.recommend import diversity as dv
+
+    return dv.CAPS[kind]

@@ -518,6 +518,35 @@ of every session.
   shares say what the trees split on, not the direction; a feature that is constant within a
   pool can't change the order within it, whatever its weight. (S10)
 
+### 13.6 A negative result is a result
+- **What:** report it when the learned model doesn't beat the baseline on held-out data.
+- **In SideKick (S10):** without caps, LightGBM reached NDCG@10 0.878 and logistic regression
+  0.874, against v0's score alone at 0.895, on 13 held-out current videos; the time split
+  agrees. With 13 contexts, 31 features are too many to learn reliably, and v0's hand-set
+  weights already encode most of the signal (similarity and topic).
+- **Lesson:** more labeled *contexts*, not more rows per context, is what would change this.
+
+### 13.7 Correlated features swap credit
+- **In SideKick:** logistic regression gave `seed` (the percentile) +0.81 and `seed_sim` (the
+  raw cosine behind it) −0.27. Two near-duplicate features split the effect, and one can even
+  flip sign. Read coefficients as a group, or drop duplicates before interpreting. (S10)
+
+### 13.8 Item labels can't see list-level goals
+- **What:** a label on one item ("would I want this next?") says nothing about the list as a
+  whole. Variety is a property of the list, so NDCG on item labels is biased *against*
+  diversity by construction.
+- **In SideKick:** the diversity caps cost 0.070 NDCG [0.014, 0.140], and MMR on top of them
+  nothing (+0.003). Whether ten good clips of one comedian make a worse list is a product
+  decision. The cap-grid report shows **groups in the top 10** and the **largest group** next
+  to NDCG, so the trade-off is visible instead of hidden. (S10)
+
+### 13.9 Prefer the simpler option when it's nearly as good
+- **What:** when choosing among settings, take the most conservative one within a small
+  tolerance of the best (the idea behind the "one standard error rule" in model selection).
+- **In SideKick:** in each leave-one-out round, the cap setting chosen is the **tightest**
+  whose training NDCG is within 0.01 of the best. Variety stays unless loosening the caps
+  clearly pays. (S10)
+
 ---
 
 ## 14. Coming next (M6–M7)

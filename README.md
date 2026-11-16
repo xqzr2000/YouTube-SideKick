@@ -61,7 +61,8 @@ current video's whole ranked pool, shown or not, with scores and ranks hidden. H
 designed and built, as a study note: [labeling app guide](docs/labeling-app-guide.md).
 `just eval` scores the ranking (NDCG@10, P@10, bad@10) on fully labeled pools against
 baselines, with intervals over current videos (M6b); `just eval --learn` adds the learned
-rankers and diversity variants on held-out current videos (M6c).
+rankers and diversity variants on held-out current videos, `just eval --caps` a grid of
+diversity-cap sizes (M6c).
 `just label-app-lan` serves it, password-protected, to other devices on your network (setup:
 [WSL2 guide §8](docs/setup-windows-wsl2.md#8-label-from-another-device-on-your-network-the-chromebook)).
 

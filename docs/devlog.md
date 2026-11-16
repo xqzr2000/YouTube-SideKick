@@ -54,6 +54,7 @@ evidence from real pages comes from the owner's runs.
 | #41 | M6 | `label-app-lan` prints ready-to-type `http://` links; setup notes on Safari's HTTPS upgrade and the PC's own address |
 | #42 | M6b | Evaluation dataset (`sidekick.rank`), NDCG@10 / P@10 / bad@10 on labeled pools, baselines, bootstrap, splits; `just eval` |
 | #43 | M6c | Learned rankers (logistic regression, LightGBM lambdarank) and diversity replay (caps, MMR, MMR window) on held-out current videos; `just eval --learn` |
+| #44 | M6c | Cap grid: replay performer / course caps, nested choice per fold (tightest within 0.01 NDCG), variety next to NDCG; `just eval --caps` |
 
 ---
 
@@ -689,4 +690,28 @@ evidence from real pages comes from the owner's runs.
       the time-split check;
     - output: coefficients and gain shares averaged over the folds.
   - **`just eval --learn`** prints it all. New dependency: `lightgbm`.
+- **`just eval --learn` on real labels** (13 folds, leave one current video out):
+  - **v0 score only:** NDCG@10 0.895;
+  - **with caps:** v0 + caps 0.825, v0 + caps + MMR 0.823, v0 + caps + MMR with a tuned
+    window 0.829;
+  - **learned, no caps:** logistic regression 0.874, LightGBM 0.878;
+  - **learned + caps:** 0.811 and 0.821.
+  - **Paired:** score only − caps **+0.070 [0.014, 0.140]**; caps − caps + MMR +0.003; learned
+    + caps − v0 + caps ≈ 0. The replay matched the logged top 10 on 85 % of pools.
+  - **Correction:** MMR was blamed in session 10's first look. With the replay separating the
+    steps, the cost is the **caps**: they hold back same-course or same-performer videos that
+    were labeled good (Chad 5K: 24 of 30 good), and the freed slots go to lower-scored ones.
+  - **Learned rankers don't beat v0** on held-out current videos, so v0 stays as the scorer.
+  - **Logistic-regression weights:** same_channel +1.36, seed +0.81, seed_sim −0.27
+    (collinear). LightGBM: seed 33 % of gain, then seed_sim, description length, same
+    channel and age.
+- **Owner's choice: option B,** loosen the caps and let the data pick, rather than dropping
+  them (A) or keeping them (C).
+- **PR #44:**
+  - `just eval --caps` replays performer caps 2 / 3 / 4 / none × course caps 5 / 8 / none on
+    v0 scores, with no MMR (it added nothing);
+  - it shows NDCG, P@10 and bad@10 next to list variety (groups in the top 10, largest group);
+  - it chooses caps inside each leave-one-out round: the tightest within 0.01 NDCG of the best
+    on the training pools;
+  - it compares the chosen caps with the shipped caps and no caps on the held-out video.
 
