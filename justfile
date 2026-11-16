@@ -94,7 +94,7 @@ label-app-lan:
     lan="$( (ip -4 route get 1.1.1.1 2>/dev/null || true) | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')"
     echo "Password:      $(cat "$pw")"
     echo "On this PC:    http://localhost:2718"
-    echo "Phone/laptop:  http://${lan:-<this PC's IPv4 from ipconfig>}:2718   (type the http:// part; Safari tries https otherwise)"
+    echo "Phone/laptop:  http://${lan:-<the PC IPv4 address from ipconfig>}:2718   (type the http:// part; Safari tries https otherwise)"
     echo "(Ignore marimo's 0.0.0.0 link below: it isn't an address a browser can open.)"
     exec uv run --group nb marimo run --headless --host 0.0.0.0 --port 2718 --token-password-file "$pw" notebooks/05_labeling.py
 
