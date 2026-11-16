@@ -52,6 +52,7 @@ evidence from real pages comes from the owner's runs.
 | #39 | M6 | `just label-app-lan`: the labeling app for the Chromebook over the home network, password-protected |
 | #40 | M6 | Labeling app for phones: one tap per answer, reasons used before as a pick list, card wraps on narrow screens |
 | #41 | M6 | `label-app-lan` prints ready-to-type `http://` links; setup notes on Safari's HTTPS upgrade and the PC's own address |
+| #42 | M6b | Evaluation dataset (`sidekick.rank`), NDCG@10 / P@10 / bad@10 on labeled pools, baselines, bootstrap, splits; `just eval` |
 
 ---
 
@@ -635,4 +636,28 @@ evidence from real pages comes from the owner's runs.
   both notes.
 - **Lesson:** a failed test from the wrong place looks like a failure of the thing under
   test. Test reachability from the device that will actually connect.
+
+## Session 10 — 2026-11-15 (late): M6b, the evaluation dataset and metrics
+
+- The owner finished labeling the ranked pools (phone and PC).
+- **PR #42 (M6b):** `sidekick.rank`.
+  - **`dataset`:** one pool per ranked compute, by default the newest per current video, as
+    in E4 part 1. For each candidate it joins:
+    - 31 logged features: the v0 parts and raw similarities, the topic-match parts, which
+      lists surfaced it, Stage C scores, Stage B facts, duration, age, and the compute's
+      context (interest mode, lecture / news, non-English current video);
+    - the newest label for (current video, candidate), as gain 2 / 1 / 0.
+  - **`metrics`:**
+    - NDCG@10 (linear gains), P@10 and bad@10 per pool;
+    - unlabeled videos dropped after ranking (condensed lists);
+    - pools evaluable only if labeled ≥ `--min-coverage` (default 100 %) and holding at least
+      one good or meh video;
+    - bootstrap and paired-bootstrap intervals over current videos;
+    - baselines: v0 as shipped (with MMR and caps), v0's score alone, random order, and
+      single features (ties broken by a fixed shuffle so they don't inherit v0's order);
+    - a feature screen (AUC of good vs rest per feature);
+    - time-ordered and leave-one-seed-out splits for M6c.
+  - **`just eval`:** all of this in a few tables; `--md` for the report, `--csv` for notebooks.
+- **Dead end:** the first single-feature baselines copied v0's order whenever a feature was
+  missing, because a stable sort keeps the logged order. They now start from a fixed shuffle.
 
