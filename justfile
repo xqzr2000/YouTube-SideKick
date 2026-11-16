@@ -91,8 +91,11 @@ label-app-lan:
         (umask 077; python3 -c 'import secrets; print(secrets.token_urlsafe(9), end="")' > "$pw")
         echo "Made a new password in $pw"
     fi
-    echo "Password: $(cat "$pw")"
-    echo "On the other device open http://<this PC's IP>:2718 (this machine's addresses: $(hostname -I))"
+    lan="$( (ip -4 route get 1.1.1.1 2>/dev/null || true) | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')"
+    echo "Password:      $(cat "$pw")"
+    echo "On this PC:    http://localhost:2718"
+    echo "Phone/laptop:  http://${lan:-<the PC IPv4 address from ipconfig>}:2718   (type the http:// part; Safari tries https otherwise)"
+    echo "(Ignore marimo's 0.0.0.0 link below: it isn't an address a browser can open.)"
     exec uv run --group nb marimo run --headless --host 0.0.0.0 --port 2718 --token-password-file "$pw" notebooks/05_labeling.py
 
 # Set gate + Stage C thresholds from your labels (dry run; `just tune --write` saves them)
