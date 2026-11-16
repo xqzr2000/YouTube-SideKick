@@ -412,15 +412,61 @@ of every session.
 - **In SideKick:** after E4 part 1, the v0 weights were **not** hand-tuned on 7 seeds. Weights
   will be learned in M6 with a proper split. (S7)
 
+### 12.3 NDCG@10 with graded labels
+- **What:** Discounted Cumulative Gain adds up each result's gain, discounted by position:
+  DCG@k = Σ gainᵢ / log₂(i + 1) for i = 1…k. NDCG divides by the DCG of the best possible
+  order of the same items, so 1.0 means a perfect order on any pool.
+- **In SideKick:** gains good 2, meh 1, bad 0 (linear; the common alternative 2^g − 1 gives
+  3 / 1 / 0 and weighs "good" more). Computed per pool, then averaged. A pool with nothing
+  good or meh has no ideal order and is skipped.
+- **Lesson:** P@10 only asks "how many good ones in the top 10"; NDCG also cares *where* they
+  are, and gives partial credit for meh.
+- **Where:** `src/sidekick/rank/metrics.py`, `just eval`. (S10)
+
+### 12.4 Incomplete labels: condensed lists
+- **What:** when some items in a pool are unlabeled, rank the whole pool, then drop the
+  unlabeled items and score what's left in the same order (Sakai, 2007). An unlabeled item
+  neither helps nor hurts.
+- **In SideKick:** this is why the labeling app finishes whole pools. With complete pools
+  nothing is dropped. `--min-coverage 0.9` lets nearly complete pools in.
+- **Lesson:** treating unlabeled as "bad" punishes a new ranker for finding things nobody
+  labeled; that bias grows exactly when the new ranker differs most from the old one. (S10)
+
+### 12.5 Paired comparisons
+- **What:** when two rankers are scored on the same pools, compare them pool by pool (the
+  difference per pool), not by their two separate means. Paired differences cancel out how
+  easy each pool is.
+- **In SideKick:** `paired_diff` bootstraps the per-pool differences ("v0 shipped − v0 score
+  only" shows what MMR and the caps cost or add).
+- **Where:** `rank/metrics.py` (`paired_diff`). (S10)
+
+### 12.6 Baselines that bracket the result
+- **What:** report a floor and simple alternatives next to the system: a random order (what
+  luck gives), single features (what one signal gives), and the current system.
+- **In SideKick:** random, topic only, seed similarity only and interest only, next to v0.
+  If "topic only" matched v0, the other v0 parts would be adding nothing.
+- **Pitfall found:** sorting by a missing feature with a stable sort kept the logged order,
+  which *is* v0's order, so the "single feature" baselines looked as good as v0. Starting
+  from a fixed shuffle fixed it. A baseline must not see the system's own output. (S10)
+
+### 12.7 Feature screening, and why it isn't evaluation
+- **What:** one AUC per feature (good vs rest) on all labeled rows, to see which logged
+  signals carry information before training anything.
+- **In SideKick:** printed by `just eval`, sorted by distance from 0.5. An AUC below 0.5 means
+  higher values go with worse videos (clickbait, Don't-show similarity).
+- **Lesson:** pooled screening mixes current videos, so a feature that mostly identifies
+  *which* current video a row came from can look strong. The real test is on held-out
+  current videos (13). (S10)
+
 ---
 
 ## 13. Coming next (M6–M7)
 
 Planned techniques, to be written up here as they're used:
 
-- **NDCG@10** with graded gains (good 2, meh 1, bad 0) on fully labeled pools (M6b).
 - **Group and time-ordered splits:** split by seed in time order, plus leave-one-seed-out, never
-  random rows (M6b).
+  random rows. The splits exist since M6b (`time_split`, `leave_one_seed_out`); M6c is where
+  they're first used to train.
 - **Learning to rank:** logistic regression, then LightGBM with a ranking objective (lambdarank),
   re-ranking logged pools against v0 (M6c).
 - **Position bias** in clicks, and why clicks stay an online check (M6).
@@ -444,6 +490,6 @@ Planned techniques, to be written up here as they're used:
 | Classical NLP (NER, POS, IDF, boilerplate) | 9 | done |
 | Information retrieval (query generation, Rocchio, MMR) | 10 | done |
 | Regression and prediction intervals for an engineering budget | 11 | done |
-| Offline ranking evaluation (P@10, NDCG) | 12, 13 | P@10 done, NDCG next |
+| Offline ranking evaluation (P@10, NDCG, paired bootstrap, baselines) | 12 | done |
 | Learning to rank, PU data, position bias | 13 | M6 |
 | Drift and persistence analysis, model cards | 13 | M7 |

@@ -79,6 +79,11 @@ label *args:
 label-app:
     uv run --group nb marimo run --headless --port 2718 notebooks/05_labeling.py
 
+# M6b: NDCG@10 / P@10 of v0 and baselines on fully labeled pools (`--csv PATH` exports the dataset)
+[positional-arguments]
+eval *args:
+    uv run python -m sidekick.rank "$@"
+
 # Password in ~/.sidekick/label-app-password (made on first run); setup: docs/setup-windows-wsl2.md §8
 # The labeling app for other devices on your network (e.g. the Chromebook), password-protected
 label-app-lan:
