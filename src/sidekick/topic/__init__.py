@@ -60,6 +60,11 @@ LEAD_DESC_WEIGHT = 0.6  # first description sentence of a title+desc lead
 SECONDARY_WEIGHT = 0.3
 SECONDARY_LINES = 2
 MIN_SPECIFIC = 2  # content words a title needs, after the template, to be its own lead
+# A search query outside news with fewer content words than this gets the strongest series
+# words of the title added (2026-11-24: the CS336 lecture "Lecture 3: Architectures" searched
+# for "Architectures" alone and got 20 videos about buildings, 19 labeled bad).
+MIN_QUERY_WORDS = 3
+SERIES_SKIP = frozenset("spring summer fall autumn winter term semester season".split())
 
 
 @dataclass
@@ -109,6 +114,22 @@ class Topic:
                 if n not in seen:
                     words.append(self.surface.get(n, n))  # "rule", not the stem "baye"
                     seen.add(n)
+        if not self.is_news and self.series and 0 < len(words) < MIN_QUERY_WORDS:
+            # a lone lecture word is ambiguous ("Architectures"): add the course's own words,
+            # heaviest first, then in title order (years and seasons say nothing)
+            series = set(self.series)
+            order = {t: i for i, t in enumerate(tx.tokens(self.title))}
+            extra = sorted(
+                (
+                    t
+                    for t in self.weights
+                    if t in series and t not in seen and t not in SERIES_SKIP and not t.isdigit()
+                ),
+                key=lambda t: (-round(self.weights[t], 6), order.get(t, 99)),
+            )
+            for t in extra[: MIN_QUERY_WORDS + 1 - len(words)]:
+                words.append(self.surface.get(t, t))
+                seen.add(t)
         return " ".join((words[:budget] + place_words)[:max_words])
 
     def summary(self) -> dict[str, Any]:
@@ -366,8 +387,9 @@ def extract(ctx: TopicContext, video: dict[str, Any] | str) -> Topic | None:
             phrases[toks] = sum(weights.get(t, 0.0) for t in toks) / len(toks) ** 0.5
     keyphrases = sorted(((" ".join(k), round(s, 2)) for k, s in phrases.items()), key=_by_score)
     surface: dict[str, str] = {}
-    for w in re.findall(r"[^\W_]+(?:['’.-][^\W_]+)*", tx.DATE_RE.sub(" ", lead)):
-        surface.setdefault(tx.norm_token(w), w.strip(".'’-"))
+    for text_ in (lead, v.get("title") or ""):  # the title too: series words for short queries
+        for w in re.findall(r"[^\W_]+(?:['’.-][^\W_]+)*", tx.DATE_RE.sub(" ", text_)):
+            surface.setdefault(tx.norm_token(w), w.strip(".'’-"))
 
     return Topic(
         video_id=v["video_id"],

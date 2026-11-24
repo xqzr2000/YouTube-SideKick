@@ -173,3 +173,25 @@ def test_cli_csv_and_empty(tmp_path, monkeypatch, capsys, store):
     assert "Nothing to evaluate yet" in capsys.readouterr().out
     out = tmp_path / "d.csv"
     assert eval_main(["--csv", str(out)]) == 0 and out.exists()
+
+
+def test_query_report(tmp_path):
+    from sidekick.rank.__main__ import query_report
+
+    s = Store(tmp_path / "q.db")
+    s.upsert_meta(VideoMeta(SEED, title="Lecture 3: Architectures"))
+    c = s.start_compute(SEED, trigger="cli", ts=T0)
+    one = [Candidate(f"ARCH{i:07d}") for i in range(6)]
+    three = [Candidate(f"LECT{i:07d}") for i in range(5)]
+    s.log_candidates(c, one, source="query", round=1, query="Architectures")
+    s.log_candidates(c, three, source="query", round=1, query="Architectures CS336 Language")
+    for i, cand in enumerate(one):
+        _label(s, c, cand.video_id, "good" if i == 0 else "bad")
+    for cand in three:
+        _label(s, c, cand.video_id, "good")
+    s.commit()
+    text = "\n".join(query_report(s))
+    assert "1 word  " in text and "17 %" in text and "83 %" in text  # 1 good, 5 bad of 6
+    assert "3+ words" in text and "100 %" in text
+    assert "Architectures" in text.split("Worst queries")[1].splitlines()[3]
+    assert "No labeled search results" in query_report(Store(tmp_path / "e.db"))[-1]

@@ -581,6 +581,17 @@ of every session.
   in others. A channel-level rule must stay context-aware, or it would drop the lectures you
   most want. (S11)
 
+### 14.5 Error analysis: follow one bad pool to its cause
+- **What:** when a metric looks fine on average, open the worst case and trace each bad item to
+  the step that let it in.
+- **In SideKick:** the CS336 pool was 22 of 33 bad, yet its ranking was decent (NDCG 0.80 vs
+  0.29 random). Listing the pool with each candidate's source showed that 19 of the bad videos
+  came from one search, `Architectures`, a word that means buildings without its course
+  context. The fix went to query construction, not to the ranker.
+- **Lesson:** ranking metrics measure the order *within* the pool; a separate check is needed
+  for what gets *into* the pool (candidate generation, "recall"). `just eval --queries` is that
+  check for searches. (S11)
+
 ---
 
 ## 15. Coming next (M7)

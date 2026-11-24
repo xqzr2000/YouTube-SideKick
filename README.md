@@ -65,7 +65,7 @@ designed and built, as a study note: [labeling app guide](docs/labeling-app-guid
 `just eval` scores the ranking (NDCG@10, P@10, bad@10) on fully labeled pools against
 baselines, with intervals over current videos (M6b); `just eval --learn` adds the learned
 rankers and diversity variants on held-out current videos, `just eval --caps` a grid of
-diversity-cap sizes (M6c).
+diversity-cap sizes (M6c), `just eval --queries` the label quality of past searches.
 `just e6` asks why YouTube keeps showing unwanted videos: how sticky they are, how widely
 they spread across current videos, which channels, and what happens after a 👎 (M7).
 `just label-app-lan` serves it, password-protected, to other devices on your network (setup:

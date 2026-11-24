@@ -59,6 +59,7 @@ evidence from real pages comes from the owner's runs.
 | #46 | M7 | E6 tool: `just e6` (stickiness, spread, channels, position/age/views, signed-in vs signed-out, after a 👎) |
 | #47 | M7 | E6 report: breadth, not stickiness; study log §14 |
 | #48 | M7 | `label-app-lan`: marimo's banner prints `localhost` instead of `0.0.0.0` (`--proxy`) |
+| #49 | M7 | Short search queries get course words ("Architectures" → "Architectures CS336 Language Modeling"); `just eval --queries` |
 
 ---
 
@@ -772,4 +773,19 @@ evidence from real pages comes from the owner's runs.
   the banner show `localhost` while the server still listens on every address. Checked in
   headless Chrome: password login and labeling work on both `localhost` and the network
   address (at iPhone size).
+- **Real-use check of the M6 pick step** (2 new pools, labeled on the phone):
+  - the comedian pool was 33 / 0 / 0, so every order scores 1.0;
+  - Stanford CS336 was 4 / 7 / 22: NDCG@10 as shown 0.798, score order 0.806, random 0.292;
+  - shown ≈ score order on both, as intended; over all 15 pools score order is 0.896.
+- **CS336's pool was poor, not its ranking.** The only search was the single word
+  **`Architectures`** (from "Lecture 3: Architectures"), because the course words are series
+  words and stay out of the query. YouTube returned 20 videos about buildings; 19 were labeled
+  bad, and 3 reached the top 10 (ranks 6–8) on the shared token "architecture". This confirms
+  the word-sense hunch from the 👎 notes.
+- **PR #49:**
+  - **`Topic.query()`:** outside news, a query of fewer than 3 words gets the heaviest series
+    words of the title, in title order, skipping years and seasons, so it becomes
+    "Architectures CS336 Language Modeling". The title's words are now in `Topic.surface` too.
+  - **`just eval --queries`:** labels of every search query's results, by query length (1 / 2
+    / 3+ words), with a cluster bootstrap over current videos, plus the worst queries.
 

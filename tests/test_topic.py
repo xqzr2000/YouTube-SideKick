@@ -435,3 +435,29 @@ def test_find_places_probes_show_names_only():
         "Harbour City"
     ]  # "Port" starts the story segment, so it isn't probed
     assert find_places(tg, "ABC World Tonight with Jane Roe", "ABC News", set()) == []
+
+
+def _course_ctx():
+    s = Store(":memory:")
+    names = ["Overview, tokenization", "PyTorch, resources", "Architectures", "Attention", "GPUs"]
+    for i, n in enumerate(names, 1):
+        title = f"Stanford CS336 Language Modeling from Scratch | Spring 2026 | Lecture {i}: {n}"
+        s.upsert_meta(VideoMeta(f"cs336lec{i:03d}", channel="Stanford Online", title=title))
+    s.commit()
+    return TopicContext(s, nlp.HeuristicTagger())
+
+
+def test_short_lecture_query_gets_course_words():
+    """2026-11-24: "Lecture 3: Architectures" searched for "Architectures" alone (buildings)."""
+    ctx = _course_ctx()
+    assert extract(ctx, "cs336lec003").query() == "Architectures CS336 Language Modeling"
+    two = extract(ctx, "cs336lec002").query().split()
+    assert two[:2] == ["PyTorch", "resources"] and "CS336" in two and len(two) == 4
+    assert "Spring" not in extract(ctx, "cs336lec005").query()  # seasons and years say nothing
+
+
+def test_long_or_news_queries_unchanged(real_ctx):
+    t = extract(real_ctx, "lect0000022")
+    assert t.query() == "Foundations Reinforcement Learning Partially Observable RL"
+    news = extract(real_ctx, "ctvseed0001")
+    assert news.query() == "tunnel turnaround"  # news never gets series words
