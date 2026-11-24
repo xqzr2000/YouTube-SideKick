@@ -57,6 +57,7 @@ evidence from real pages comes from the owner's runs.
 | #44 | M6c | Cap grid: replay performer / course caps, nested choice per fold (tightest within 0.01 NDCG), variety next to NDCG; `just eval --caps` |
 | #45 | M6 | Ship the chosen pick step (score order, course cap 5, no performer cap, MMR off); E4 part 2 report; M6 closed |
 | #46 | M7 | E6 tool: `just e6` (stickiness, spread, channels, position/age/views, signed-in vs signed-out, after a 👎) |
+| #47 | M7 | E6 report: breadth, not stickiness; study log §14 |
 
 ---
 
@@ -749,4 +750,19 @@ evidence from real pages comes from the owner's runs.
     - the most persistent unwanted videos.
   - **Intervals:** a cluster bootstrap over current videos (resample current videos, pool
     their counts).
+- **`just e6` on real data:** 915 sightings, 43 computes, 15 current videos.
+  - **Stickiness:** unwanted 32 % vs wanted 64 %.
+  - **Spread** (under ≥ 2 current videos): unwanted 13 % vs wanted 8 %.
+  - **Channels:** Jimmy Kimmel Live under 9 of 15 current videos, 26 of 26 sightings unwanted.
+  - **Freshness:** median age unwanted 8 days vs wanted 688; views 443 k vs 269 k.
+  - **Signed-in vs signed-out:** 37 % vs 27 % unwanted, but only 3 panel computes, so
+    inconclusive.
+  - **After a 👎:** too few computes since the 👎s to tell.
+- **Conclusion (PR #47, `reports/E6-persistence.md`):** breadth, not stickiness. Fresh,
+  popular videos from a few channels are pushed across unrelated contexts. A context-aware
+  channel prior is noted as a later improvement; there's no filter change now.
+- **Also seen:** two new pools from the M6 pick step (Stanford CS336, a comedian), not labeled
+  yet. 👎 notes on 11-16 marked three architecture (building) videos "not related", probably
+  under the CS336 language-model lecture: a word-sense confusion to check once that pool is
+  labeled.
 

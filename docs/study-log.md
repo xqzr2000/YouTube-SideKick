@@ -6,7 +6,7 @@ evidence it produced, the lesson, and where to read the code. It's written for s
 entry, open the file, rerun the notebook, try the exercise.
 
 Entries are grouped by the stage of a data-science project they belong to, not by date. Each
-ends with the session it came from (S1–S10, see the dev log). New entries are added at the end
+ends with the session it came from (S1–S11, see the dev log). New entries are added at the end
 of every session.
 
 **Contents**
@@ -24,8 +24,9 @@ of every session.
 11. [Performance as a measured quantity](#11-performance-as-a-measured-quantity)
 12. [Offline evaluation of a ranker](#12-offline-evaluation-of-a-ranker)
 13. [Learning to rank (M6c)](#13-learning-to-rank-m6c)
-14. [Coming next (M7)](#14-coming-next-m7)
-15. [Skills checklist](#15-skills-checklist)
+14. [Behaviour analysis from logs (M7)](#14-behaviour-analysis-from-logs-m7)
+15. [Coming next (M7)](#15-coming-next-m7)
+16. [Skills checklist](#16-skills-checklist)
 
 ---
 
@@ -549,7 +550,40 @@ of every session.
 
 ---
 
-## 14. Coming next (M7)
+## 14. Behaviour analysis from logs (M7)
+
+### 14.1 Define the measure before looking: stickiness vs spread
+- **What:** "YouTube keeps recommending it" could mean two different things. It could be
+  **sticky** (the same video comes back for the same context) or **broad** (it shows up across
+  unrelated contexts). Each gets its own measure, decided before reading the numbers.
+- **In SideKick (E6):** stickiness = share still there in the next compute of the same current
+  video. Spread = the number of distinct current videos a video appeared under. The answer was
+  breadth: unwanted videos were *less* sticky (32 % vs 64 %) but spread more (13 % vs 8 % under
+  ≥ 2 current videos).
+- **Where:** `src/sidekick/e6.py`, `reports/E6-persistence.md`. (S11)
+
+### 14.2 Rates with a cluster bootstrap
+- **What:** when items come in groups (sightings under one current video), resample whole
+  groups and pool their counts, rather than resampling items.
+- **In SideKick:** `cluster_rate` resamples current videos; the signed-in rate (63 sightings
+  from 3 computes) gets a wide interval, [15, 70] %. Resampling the 63 sightings would have
+  pretended there was far more evidence. (S11)
+
+### 14.3 Look for the confounder
+- **What:** when two groups differ, ask what else differs between them.
+- **In SideKick:** unwanted videos were a week old at median and wanted ones almost two years,
+  with more views. Freshness and popularity, not position, separate them, which points to a
+  context-free "new and popular" signal in YouTube's lists. It also explains why `age_days_log`
+  helped in E4's feature screen. (S11)
+
+### 14.4 A label is about a context, not an item
+- **In SideKick:** MIT OpenCourseWare and 3Blue1Brown are unwanted in some contexts and wanted
+  in others. A channel-level rule must stay context-aware, or it would drop the lectures you
+  most want. (S11)
+
+---
+
+## 15. Coming next (M7)
 
 Planned techniques, to be written up here as they're used:
 
@@ -558,12 +592,11 @@ Planned techniques, to be written up here as they're used:
 - **Retrying learned rankers** once about 30 current videos are labeled.
 - **Position bias** in clicks, and why clicks stay an online check (M6).
 - **Taste drift:** a time-decay half-life for feedback and profile lines (E5, M7).
-- **Persistence analysis:** why YouTube keeps resurfacing a disliked video (E6, M7).
 - **Model card:** what the ranker is for, its data, metrics and limits (M7).
 
 ---
 
-## 15. Skills checklist
+## 16. Skills checklist
 
 | Skill | Where you practised it | Status |
 |---|---|---|
@@ -579,5 +612,6 @@ Planned techniques, to be written up here as they're used:
 | Regression and prediction intervals for an engineering budget | 11 | done |
 | Offline ranking evaluation (P@10, NDCG, paired bootstrap, baselines) | 12 | done |
 | Learning to rank, grouped CV, nested tuning | 13 | done (M6c) |
-| PU data, position bias | 14 | M6–M7 |
-| Drift and persistence analysis, model cards | 14 | M7 |
+| PU data, position bias | 15 | M7 |
+| Persistence analysis from logs (cluster bootstrap, confounders) | 14 | done (E6) |
+| Drift analysis, model cards | 15 | M7 |
