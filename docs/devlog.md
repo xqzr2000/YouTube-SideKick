@@ -60,6 +60,7 @@ evidence from real pages comes from the owner's runs.
 | #47 | M7 | E6 report: breadth, not stickiness; study log §14 |
 | #48 | M7 | `label-app-lan`: marimo's banner prints `localhost` instead of `0.0.0.0` (`--proxy`) |
 | #49 | M7 | Short search queries get course words ("Architectures" → "Architectures CS336 Language Modeling"); `just eval --queries` |
+| #50 | M7 | Course cap judged on lecture pools only, by a rule fixed in advance (decides at ≥ 8 lecture pools); `just eval --caps` section |
 
 ---
 
@@ -788,4 +789,22 @@ evidence from real pages comes from the owner's runs.
     "Architectures CS336 Language Modeling". The title's words are now in `Topic.surface` too.
   - **`just eval --queries`:** labels of every search query's results, by query length (1 / 2
     / 3+ words), with a cluster bootstrap over current videos, plus the worst queries.
+- **After #49:**
+  - **`just eval --queries`:** 1-word queries 0 % good (only `Architectures`, n = 1), 2-word
+    42 %, 3+ words 61 %.
+  - **CS336 Lecture 4:** queried `Attention Alternatives CS336 Scratch` and got CS336 lectures
+    and topic videos, with no stray buildings.
+  - **But the course cap bound:** five CS336 lectures (0.50–0.57) were held back while
+    positions 8–10 went to videos at 0.11–0.17.
+- **Lecture 4 pool labeled (20 / 6 / 1):** shown 0.903 vs score order 1.000.
+  - **`just eval --caps`, 16 pools (5 lecture):** course 5 / 8 / none = 0.896 / 0.903 / 0.903
+    with no performer cap.
+  - **The nested rule kept course 5 in all 16 folds,** because averaged over all pools the
+    course cap costs +0.007 [0.000, 0.019]. Per lecture pool it's about 0.02: the overall
+    average dilutes a rule that can only bind in lecture pools.
+- **Decision (owner, option A over changing the rule after seeing the result):** keep course
+  5 now, and **pre-register** the next decision. The cap is judged on lecture pools only (same
+  nested rule; the most frequent choice decides), once ≥ 8 lecture pools are labeled.
+- **PR #50:** `learn.course_cap_leave_one_out` and a lecture-only section in
+  `just eval --caps`, which states whether the rule has been met yet; E4 addendum.
 

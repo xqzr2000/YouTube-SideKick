@@ -259,3 +259,51 @@ def caps_leave_one_out(pools: list[Pool]) -> CapEval:
             rank = R.picker(R.v0_scores, None, mmr=False, cap_values=caps)
             out.results.setdefault(name, []).extend(M.per_pool(test, rank))
     return out
+
+
+# -- Course cap, pre-registered rule (Russell chose option A, 2026-11-24) -----------------------
+# The course cap only binds in lecture-context pools, so averaging over every pool dilutes its
+# cost (16 pools on 2026-11-24: +0.007 overall, ≈ 0.02 per lecture pool). Decided *before* the
+# next run: judge it on lecture pools only, by leave-one-out with the same "tightest within
+# TOLERANCE" rule, and only once MIN_LECTURE_POOLS are labeled. Until then the cap stays at 5.
+
+MIN_LECTURE_POOLS = 8
+COURSE_CAPS: Sequence[int | None] = (5, 8, None)
+
+
+def course_label(cap: int | None) -> str:
+    return "course none" if cap is None else f"course {cap}"
+
+
+def choose_course_cap(train: list[Pool], tolerance: float = TOLERANCE) -> int | None:
+    """Tightest course cap within ``tolerance`` NDCG of the best on lecture training pools."""
+    scores = [score_caps(train, {"other": None, "lecture": c})["ndcg"] for c in COURSE_CAPS]
+    best = max(scores)
+    return next(c for c, v in zip(COURSE_CAPS, scores, strict=True) if v >= best - tolerance)
+
+
+@dataclass
+class CourseCapEval:
+    n_pools: int = 0
+    ready: bool = False
+    chosen: list[int | None] = field(default_factory=list)
+    results: dict[str, list[dict]] = field(default_factory=dict)
+
+
+def course_cap_leave_one_out(pools: list[Pool]) -> CourseCapEval:
+    """The pre-registered evaluation: lecture pools only, nested choice per fold."""
+    lect = [p for p in pools if p.kind == "lecture"]
+    out = CourseCapEval(n_pools=len(lect), ready=len(lect) >= MIN_LECTURE_POOLS)
+    if len(lect) < 2:
+        return out
+    for _, train, test in M.leave_one_seed_out(lect):
+        if not train or not test:
+            continue
+        c = choose_course_cap(train)
+        out.chosen.append(c)
+        for name, cap in (("chosen (nested)", c), ("course 5 (now)", 5), ("course none", None)):
+            rank = R.picker(
+                R.v0_scores, None, mmr=False, cap_values={"other": None, "lecture": cap}
+            )
+            out.results.setdefault(name, []).extend(M.per_pool(test, rank))
+    return out
