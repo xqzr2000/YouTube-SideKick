@@ -12,4 +12,4 @@ sample.
 | E3 | [How much can one compute fetch and still finish in 90 s?](E3-timing.md) | done (M4, WSL2; rechecked 2026-11-12); ChromeOS paused |
 | E4 | [Does SideKick's ranking beat YouTube's own up-next?](E4-ranker.md) | done: part 1 (M4, v0 vs YouTube), part 2 (M6: learned rankers don't beat v0; performer cap and MMR dropped) |
 | E5 | Taste drift: time-decay half-life | M7 |
-| E6 | Why does YouTube keep recommending X? | M7 |
+| E6 | [Why does YouTube keep recommending what I don't want?](E6-persistence.md) | done (M7): breadth, not stickiness; fresh popular videos from a few channels across contexts |
