@@ -604,7 +604,10 @@ of every session.
   point in writing before the run that decides.
 - **In SideKick:** instead of switching to course cap 8 on the spot, the rule for the next run
   was written into the repo first (`reports/E4-ranker.md` addendum; `just eval --caps` prints
-  it): lecture pools only, the same nested choice, decided at ≥ 8 lecture pools. (S11)
+  it): lecture pools only, the same nested choice, decided at ≥ 8 lecture pools. Three
+  pools later the rule was met and decided clearly (no course cap, +0.130 [0.035, 0.224] held
+  out). Because the rule came first, the result can't be "found" by choosing how to look at
+  it. (S11)
 
 ---
 

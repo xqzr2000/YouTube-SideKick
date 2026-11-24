@@ -61,6 +61,7 @@ evidence from real pages comes from the owner's runs.
 | #48 | M7 | `label-app-lan`: marimo's banner prints `localhost` instead of `0.0.0.0` (`--proxy`) |
 | #49 | M7 | Short search queries get course words ("Architectures" → "Architectures CS336 Language Modeling"); `just eval --queries` |
 | #50 | M7 | Course cap judged on lecture pools only, by a rule fixed in advance (decides at ≥ 8 lecture pools); `just eval --caps` section |
+| #51 | M7 | Pre-registered rule met: no course cap; the pick step is plain v0 score order |
 
 ---
 
@@ -807,4 +808,17 @@ evidence from real pages comes from the owner's runs.
   nested rule; the most frequent choice decides), once ≥ 8 lecture pools are labeled.
 - **PR #50:** `learn.course_cap_leave_one_out` and a lecture-only section in
   `just eval --caps`, which states whether the rule has been met yet; E4 addendum.
+- **Pre-registered check met the same day:** the owner labeled 3 more lecture pools (CS336
+  Lectures 2, 5 and 6, or similar; 4 CS336 pools in all), giving 8 lecture pools and 19 pools.
+  - **Lecture pools only:** course 5 / 8 / none = 0.768 / 0.860 / **0.897** NDCG@10; bad 25 /
+    15 / 10 %.
+  - **The nested choice was no course cap in all 8 folds;** held out +0.130 [0.035, 0.224]
+    over course 5.
+- **PR #51:** `diversity.CAPS = {"lecture": None, "other": None}`. With MMR already off, the
+  top 10 is plain v0 score order. The E4 addendum records the result and the caveat: 5 of the
+  8 lecture pools are CS336.
+- **Over 19 pools:** score order 0.916 [0.863, 0.961], M5 caps 0.814. Seed similarity alone is
+  now 0.900 and topic alone 0.879, so v0's advantage over its best single part is small; the
+  learned-ranker retry (about 30 current videos; 19 now) will say whether a model adds
+  anything.
 
