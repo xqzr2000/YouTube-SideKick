@@ -105,8 +105,9 @@ label-app-lan:
     echo "Password:      $(cat "$pw")"
     echo "On this PC:    http://localhost:2718"
     echo "Phone/laptop:  http://${lan:-<the PC IPv4 address from ipconfig>}:2718   (type the http:// part; Safari tries https otherwise)"
-    echo "(Ignore marimo's 0.0.0.0 link below: it isn't an address a browser can open.)"
-    exec uv run --group nb marimo run --headless --host 0.0.0.0 --port 2718 --token-password-file "$pw" notebooks/05_labeling.py
+    # --proxy only changes the link marimo prints (localhost instead of 0.0.0.0, which a
+    # browser can't open); the server still listens on every address for the phone
+    exec uv run --group nb marimo run --headless --host 0.0.0.0 --port 2718 --proxy localhost:2718 --token-password-file "$pw" notebooks/05_labeling.py
 
 # Set gate + Stage C thresholds from your labels (dry run; `just tune --write` saves them)
 [positional-arguments]

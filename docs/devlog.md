@@ -58,6 +58,7 @@ evidence from real pages comes from the owner's runs.
 | #45 | M6 | Ship the chosen pick step (score order, course cap 5, no performer cap, MMR off); E4 part 2 report; M6 closed |
 | #46 | M7 | E6 tool: `just e6` (stickiness, spread, channels, position/age/views, signed-in vs signed-out, after a 👎) |
 | #47 | M7 | E6 report: breadth, not stickiness; study log §14 |
+| #48 | M7 | `label-app-lan`: marimo's banner prints `localhost` instead of `0.0.0.0` (`--proxy`) |
 
 ---
 
@@ -765,4 +766,10 @@ evidence from real pages comes from the owner's runs.
   yet. 👎 notes on 11-16 marked three architecture (building) videos "not related", probably
   under the CS336 language-model lecture: a word-sense confusion to check once that pool is
   labeled.
+- **Owner labeled the two new pools** (CS336, a comedian) on the phone.
+- **PR #48:** marimo's own banner still printed `http://0.0.0.0:2718`. Its `--proxy` option sets
+  the address marimo *prints* (meant for reverse proxies), so `--proxy localhost:2718` makes
+  the banner show `localhost` while the server still listens on every address. Checked in
+  headless Chrome: password login and labeling work on both `localhost` and the network
+  address (at iPhone size).
 
