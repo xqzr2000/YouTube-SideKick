@@ -592,6 +592,20 @@ of every session.
   for what gets *into* the pool (candidate generation, "recall"). `just eval --queries` is that
   check for searches. (S11)
 
+### 14.6 Averages dilute rules that only apply sometimes
+- **What:** a setting that can only matter in one subgroup should be judged on that subgroup.
+  Averaging over everything adds zeros from the cases it can't affect.
+- **In SideKick:** the course cap only binds in lecture pools. Over all 16 pools it cost
+  +0.007 NDCG (under the 0.01 tolerance); per lecture pool it was about 0.02. (S11)
+
+### 14.7 Pre-registration and the garden of forking paths
+- **What:** if you change how a result will be judged *after* seeing which way it points,
+  almost any result can be made to look like a win. Fix the rule, the subgroup and the stopping
+  point in writing before the run that decides.
+- **In SideKick:** instead of switching to course cap 8 on the spot, the rule for the next run
+  was written into the repo first (`reports/E4-ranker.md` addendum; `just eval --caps` prints
+  it): lecture pools only, the same nested choice, decided at ≥ 8 lecture pools. (S11)
+
 ---
 
 ## 15. Coming next (M7)

@@ -179,3 +179,28 @@ def test_variety_and_caps_report(store):
     text = "\n".join(caps_report(store))
     assert "Cap grid on all 8 pools" in text and "chosen − M5 caps" in text
     assert "performer 2, course 5" in text
+
+
+def _lecture_pool(k: int) -> Pool:
+    """8 same-course lectures (good, high score) and 4 others (bad, low score)."""
+    rows = [Row(f"L{k:02d}{i:02d}", "good", 0.9 - i / 100, None, {}, group="course")
+            for i in range(8)]  # fmt: skip
+    rows += [Row(f"O{k:02d}{i:02d}", "bad", 0.2 - i / 100, None, {}, group=f"o{i}")
+             for i in range(4)]  # fmt: skip
+    return Pool(f"c{k}", f"seed{k}", f"lecture {k}", f"2026-11-{k + 1:02d}", "cli", rows,
+                kind="lecture")  # fmt: skip
+
+
+def test_course_cap_preregistered_rule():
+    from sidekick.rank.__main__ import course_cap_section
+
+    few = [_lecture_pool(k) for k in range(Ln.MIN_LECTURE_POOLS - 1)]
+    ev = Ln.course_cap_leave_one_out(few)
+    assert ev.n_pools == 7 and not ev.ready and len(ev.chosen) == 7
+    assert all(c == 8 for c in ev.chosen)  # 8 fits all 8 lectures; tightest within tolerance
+    text = "\n".join(course_cap_section(few, md=False))
+    assert "No decision yet: 1 more labeled lecture pool(s)" in text
+    many = [_lecture_pool(k) for k in range(Ln.MIN_LECTURE_POOLS)]
+    text = "\n".join(course_cap_section(many, md=False))
+    assert "DECISION (rule met, 8 lecture pools): course 8" in text
+    assert "No lecture-context pools yet." in course_cap_section([], md=False)[-1]

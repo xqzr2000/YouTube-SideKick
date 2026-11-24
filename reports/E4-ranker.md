@@ -193,3 +193,25 @@ raw seed similarity, description length, same channel and age.
   leave-one-out estimate (+0.070) is the honest one.
 - **The test pools were picked by v0:** candidates come from v0's pools, so a ranker that
   would have searched differently can't be judged here.
+
+## Addendum (2026-11-24): the course cap, pre-registered
+
+The first real use after M6 added three pools, one of them a second CS336 lecture. That pool
+showed the course cap binding: shown 0.903 vs score order 1.000, with five same-course lectures
+(scores 0.50–0.57) held back for videos at 0.11–0.17.
+
+Over all 16 pools the chosen rule kept course cap 5 in every fold (no cap − chosen: +0.007
+[0.000, 0.019]). But the course cap can only bind in lecture-context pools (5 of 16), so that
+average is diluted; per lecture pool the cost is about 0.02.
+
+**Rule fixed before the next run** (Russell, option A, rather than changing the rule after
+seeing this result):
+
+- judge the course cap on **lecture pools only**;
+- leave one current video out, choosing the tightest of course 5 / 8 / none within 0.01 NDCG of
+  the best on each fold's training pools;
+- the most frequent choice across folds is the decision;
+- **decide once ≥ 8 lecture pools are labeled.** Until then the cap stays at 5.
+
+`just eval --caps` prints this check and states whether the rule has been met.
+

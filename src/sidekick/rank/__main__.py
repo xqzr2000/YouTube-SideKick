@@ -260,6 +260,57 @@ def caps_report(store: Store, *, min_coverage: float = 1.0, md: bool = False) ->
     lines.append(
         "no caps − chosen: " + _fmt(M.paired_diff(nd["no caps"], nd["chosen caps (nested)"]))
     )
+    lines += course_cap_section(pools, md)
+    return lines
+
+
+def course_cap_section(pools: list, md: bool) -> list[str]:
+    """The pre-registered course-cap check (2026-11-24): lecture pools only."""
+    from sidekick.rank import learn as Ln
+
+    lect = [p for p in pools if p.kind == "lecture"]
+    lines = [
+        "",
+        f"== Course cap on lecture pools only (pre-registered 2026-11-24): {len(lect)} pools, "
+        f"decides at ≥ {Ln.MIN_LECTURE_POOLS} ==",
+    ]
+    if not lect:
+        return lines + ["No lecture-context pools yet."]
+    rows = []
+    for cap in Ln.COURSE_CAPS:
+        sc = Ln.score_caps(lect, {"other": None, "lecture": cap})
+        rows.append(
+            [
+                Ln.course_label(cap),
+                f"{sc['ndcg']:.3f}",
+                f"{sc['p'] * 100:.0f} %",
+                f"{sc['bad'] * 100:.0f} %",
+                f"{sc['largest']:.1f}",
+            ]
+        )
+    lines += _table(["course cap", "NDCG@10", "P@10", "bad@10", "largest group"], rows, md)
+    ev = Ln.course_cap_leave_one_out(pools)
+    if ev.chosen:
+        picks: dict[str, int] = {}
+        for c in ev.chosen:
+            picks[Ln.course_label(c)] = picks.get(Ln.course_label(c), 0) + 1
+        lines.append(
+            "chosen inside each fold: "
+            + "; ".join(f"{k} ×{v}" for k, v in sorted(picks.items(), key=lambda t: -t[1]))
+        )
+        nd = {k: [r["ndcg"] for r in v] for k, v in ev.results.items()}
+        lines.append(
+            "held out, chosen − course 5: "
+            + _fmt(M.paired_diff(nd["chosen (nested)"], nd["course 5 (now)"]))
+        )
+    if ev.ready:
+        verdict = max(set(ev.chosen), key=ev.chosen.count) if ev.chosen else 5
+        lines.append(f"DECISION (rule met, {len(lect)} lecture pools): {Ln.course_label(verdict)}")
+    else:
+        lines.append(
+            f"No decision yet: {Ln.MIN_LECTURE_POOLS - len(lect)} more labeled lecture pool(s) "
+            "needed; the cap stays at 5."
+        )
     return lines
 
 
