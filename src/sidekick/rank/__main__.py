@@ -263,6 +263,75 @@ def caps_report(store: Store, *, min_coverage: float = 1.0, md: bool = False) ->
     return lines
 
 
+def query_report(store: Store, *, md: bool = False) -> list[str]:
+    """How good were the search queries? Labels of each query's results, by query length."""
+    from sidekick.e6 import cluster_rate
+
+    labels = {
+        (seed, vid): lab
+        for seed, vid, lab in store.conn.execute(
+            """SELECT c.current_video_id, l.video_id, l.label FROM labels l
+               JOIN computes c ON c.compute_id = l.compute_id
+               WHERE l.kind = 'candidate' ORDER BY l.ts, l.label_id"""
+        )
+    }
+    rows = store.conn.execute(
+        """SELECT DISTINCT c.current_video_id, k.compute_id, k.query, k.video_id
+           FROM candidates k JOIN computes c ON c.compute_id = k.compute_id
+           WHERE k.source = 'query' AND k.query IS NOT NULL"""
+    ).fetchall()
+    per_q: dict[tuple[str, str], dict[str, int]] = {}
+    seed_of: dict[tuple[str, str], str] = {}
+    for seed, cid, query, vid in rows:
+        lab = labels.get((seed, vid))
+        if lab is None:
+            continue
+        key = (cid, query)
+        seed_of[key] = seed
+        per_q.setdefault(key, {"good": 0, "meh": 0, "bad": 0})[lab] += 1
+    lines = ["", "== Search queries: labels of their results, by query length =="]
+    if not per_q:
+        return lines + ["No labeled search results yet."]
+
+    def bucket(q: str) -> str:
+        n = len(q.split())
+        return "1 word" if n == 1 else "2 words" if n == 2 else "3+ words"
+
+    names = ("1 word", "2 words", "3+ words")
+    counts: dict[str, dict[str, dict[str, tuple[int, int]]]] = {
+        n: {"good": {}, "bad": {}} for n in names
+    }
+    n_queries = dict.fromkeys(names, 0)
+    for key, c in per_q.items():
+        name, seed, total = bucket(key[1]), seed_of[key], sum(c.values())
+        n_queries[name] += 1
+        for lab in ("good", "bad"):
+            hits, tot = counts[name][lab].get(seed, (0, 0))
+            counts[name][lab][seed] = (hits + c[lab], tot + total)
+
+    def pct(t: tuple[float, float, float, int]) -> str:
+        return (
+            "–" if math.isnan(t[0]) else f"{t[0] * 100:.0f} % [{t[1] * 100:.0f}, {t[2] * 100:.0f}]"
+        )
+
+    table = []
+    for name in names:
+        good, bad = cluster_rate(counts[name]["good"]), cluster_rate(counts[name]["bad"])
+        table.append([name, str(n_queries[name]), pct(good), pct(bad), str(good[3])])
+    lines += _table(["query length", "queries", "good", "bad", "labeled results"], table, md)
+    worst = sorted(
+        ((k, c) for k, c in per_q.items() if sum(c.values()) >= 5),
+        key=lambda kc: -kc[1]["bad"] / sum(kc[1].values()),
+    )[:8]
+    lines += ["", "Worst queries (≥ 5 labeled results):"]
+    lines += _table(
+        ["query", "good / meh / bad"],
+        [[q[:50], f"{c['good']} / {c['meh']} / {c['bad']}"] for (_, q), c in worst],
+        md,
+    )
+    return lines
+
+
 def write_csv(store: Store, path: Path, which: str) -> int:
     recs = to_records(load_pools(store, which=which))
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -282,6 +351,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--csv", type=Path, help="write the dataset (one row per candidate)")
     ap.add_argument("--learn", action="store_true", help="M6c: learned rankers, leave one out")
     ap.add_argument("--caps", action="store_true", help="M6c: replay a grid of diversity caps")
+    ap.add_argument("--queries", action="store_true", help="label quality of search queries")
     args = ap.parse_args(argv)
     which = "all" if args.all else "newest"
     paths = ensure_home()
@@ -297,6 +367,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(line)
         if args.caps:
             for line in caps_report(store, min_coverage=args.min_coverage, md=args.md):
+                print(line)
+        if args.queries:
+            for line in query_report(store, md=args.md):
                 print(line)
     return 0
 
