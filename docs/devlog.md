@@ -56,6 +56,7 @@ evidence from real pages comes from the owner's runs.
 | #43 | M6c | Learned rankers (logistic regression, LightGBM lambdarank) and diversity replay (caps, MMR, MMR window) on held-out current videos; `just eval --learn` |
 | #44 | M6c | Cap grid: replay performer / course caps, nested choice per fold (tightest within 0.01 NDCG), variety next to NDCG; `just eval --caps` |
 | #45 | M6 | Ship the chosen pick step (score order, course cap 5, no performer cap, MMR off); E4 part 2 report; M6 closed |
+| #46 | M7 | E6 tool: `just e6` (stickiness, spread, channels, position/age/views, signed-in vs signed-out, after a 👎) |
 
 ---
 
@@ -730,4 +731,22 @@ evidence from real pages comes from the owner's runs.
   - the replay of logged pools uses `CAPS_M5`, because that's what picked them;
   - `just recommend` prints the cap in force;
   - `reports/E4-ranker.md` part 2 written up. **M6 closed.**
+
+## Session 11 — 2026-11-24: M7 starts with E6
+
+- **Status:** `main` at #45, no open PRs; the M6 pick step is live on WSL2.
+- **PR #46, the E6 tool** (`sidekick.e6`, `just e6`). It works from logged YouTube lists only:
+  the signed-out up-next from fetched pages and the signed-in list from the panel's tab.
+  - **Classes per sighting:** *unwanted* (labeled bad in that context, dropped by Stage C in
+    that compute, or 👎'd), *wanted* (labeled good), *meh*, *unknown*.
+  - **The questions it answers:**
+    - stickiness: still there the next time the same current video is computed?
+    - spread: under how many different current videos does it appear?
+    - which channels' unwanted videos appear under the most contexts;
+    - median up-next position, age and views per class;
+    - the unwanted share of the signed-in vs the signed-out list, paired per compute;
+    - what YouTube shows after a 👎;
+    - the most persistent unwanted videos.
+  - **Intervals:** a cluster bootstrap over current videos (resample current videos, pool
+    their counts).
 
