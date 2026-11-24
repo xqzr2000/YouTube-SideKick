@@ -328,7 +328,7 @@ def test_cli_prints_top(tmp_path, monkeypatch, capsys):
     assert cli.main([f"https://www.youtube.com/watch?v={CUR}", "--min-pool", "50"]) == 0
     out = capsys.readouterr().out
     assert "round 0  up-next 6" in out and "round 1  topic" in out and "snowball" in out
-    assert "lecture context: same course ≤ 5" in out
+    assert "lecture context: no cap" in out
     assert "top " in out and "18. Bayesian Statistics (cont.)" in out and "compute " in out
     assert cli.main([CUR, "--cold", "--no-search"]) == 0
     with Store.open(Paths(tmp_path)) as st:
@@ -449,12 +449,13 @@ def test_non_english_video_searches_in_english(store, tmp_path):
     assert methods == ["english"]
 
 
-def test_m6c_defaults_no_performer_cap_no_mmr(store, tmp_path):
-    """M6c: score order with the course cap only; the M5 caps stay available via Config."""
+def test_defaults_plain_score_order(store, tmp_path):
+    """M6c + the 2026-11-24 course-cap decision: plain score order, no caps, no MMR; the M5
+    caps stay available via Config."""
     from sidekick.recommend import Config
 
     cfg = Config()
-    assert cfg.mmr is False and cfg.caps == {"lecture": 5, "other": None}
+    assert cfg.mmr is False and cfg.caps == {"lecture": None, "other": None}
     assert dv.CAPS_M5 == {"lecture": 5, "other": 2}
     res, _ = run(store, tmp_path, min_pool=3, top_k=4)
     shown = [r for r in res.ranked if r.rank is not None]

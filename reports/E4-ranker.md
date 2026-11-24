@@ -215,3 +215,24 @@ seeing this result):
 
 `just eval --caps` prints this check and states whether the rule has been met.
 
+### Result of the pre-registered check (2026-11-24, same day)
+
+After 3 more lecture pools were labeled, `just eval --caps` met the rule (8 lecture pools,
+19 pools in all, 560 labels).
+
+| course cap, lecture pools only | NDCG@10 | P@10 | bad@10 | largest group |
+|---|---|---|---|---|
+| 5 | 0.768 | 55 % | 25 % | 3.8 |
+| 8 | 0.860 | 70 % | 15 % | 5.4 |
+| none | **0.897** | **76 %** | **10 %** | 6.2 |
+
+- **Every fold chose no course cap;** held out, it beat course cap 5 by **+0.130 [0.035,
+  0.224]**.
+- **Decision, per the rule:** no course cap. SideKick's top 10 is now plain v0 score order, with
+  no caps and no MMR.
+- **Over all 19 pools:** score order 0.916, vs 0.814 for the M5 caps (performer 2, course 5).
+- **Caveat:** 5 of the 8 lecture pools are one course (Stanford CS336), so the result leans on
+  that course. The other three are MIT 18.650, Chi Jin's RL course and CMU AI Agents. Lists of a
+  single course can now fill the whole top 10 (largest group 6.2 on average); if that feels
+  repetitive in use, a 👎 note or a report says so, and the cap grid can be rerun.
+

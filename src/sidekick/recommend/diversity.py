@@ -1,8 +1,9 @@
 """Picking the 10 to show: MMR with group caps (spec §5.8).
 
-**Since M6c (2026-11-15) the default is plain v0 score order with the course cap only** (no
-performer cap, MMR off); see ``CAPS`` below and ``reports/E4-ranker.md``. The rest of this
-docstring describes the M4 design, which stays available through ``Config``.
+**Since 2026-11-24 the default is plain v0 score order: no caps, MMR off** (M6c dropped the
+performer cap and MMR; the pre-registered lecture-pool check dropped the course cap). See
+``CAPS`` below and ``reports/E4-ranker.md``. The rest of this docstring describes the M4
+design, which stays available through ``Config``.
 
 Decided 2026-11-05 (Russell), after the first real ``just recommend`` runs:
 
@@ -48,9 +49,11 @@ from sidekick.topic.nlp import Tagger
 LAMBDA = 0.75
 # M6c (2026-11-15, Russell chose "let the data pick"): on 13 fully labeled pools, the
 # performer cap of 2 cost NDCG@10 0.070 [0.014, 0.140] and tripled the bad share; every
-# leave-one-out round chose no performer cap. The course cap never bound, so it stays as a
-# guard. MMR is off by default (``Config.mmr``): it added +0.003 on top of the caps.
-CAPS: dict[str, int | None] = {"lecture": 5, "other": None}  # None = no cap
+# leave-one-out round chose no performer cap. MMR is off by default (``Config.mmr``): it added
+# +0.003 on top of the caps.
+# 2026-11-24, pre-registered rule met (8 lecture pools, judged on lecture pools only): every
+# fold chose no course cap; held out +0.130 NDCG@10 [0.035, 0.224] over course cap 5.
+CAPS: dict[str, int | None] = {"lecture": None, "other": None}  # None = no cap
 CAPS_M5 = {"lecture": 5, "other": 2}  # what M4-M5 shipped, kept for comparisons
 _LECTURE_RE = re.compile(
     r"(?i:\b(?:lecture|lectures|course|module|seminar|class|tutorial|lesson)\b)"
