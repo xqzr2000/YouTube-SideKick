@@ -79,6 +79,11 @@ label *args:
 label-app:
     uv run --group nb marimo run --headless --port 2718 notebooks/05_labeling.py
 
+# E6: why YouTube keeps showing unwanted videos (stickiness, spread, channels, after a 👎)
+[positional-arguments]
+e6 *args:
+    uv run python -m sidekick.e6 "$@"
+
 # M6b/M6c: NDCG@10 of v0, baselines (and with --learn, learned rankers) on labeled pools
 [positional-arguments]
 eval *args:
