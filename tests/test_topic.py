@@ -441,10 +441,8 @@ def _course_ctx():
     s = Store(":memory:")
     names = ["Overview, tokenization", "PyTorch, resources", "Architectures", "Attention", "GPUs"]
     for i, n in enumerate(names, 1):
-        s.upsert_meta(
-            VideoMeta(f"cs336lec{i:03d}", channel="Stanford Online",
-                      title=f"Stanford CS336 Language Modeling from Scratch | Spring 2026 | Lecture {i}: {n}")
-        )  # fmt: skip
+        title = f"Stanford CS336 Language Modeling from Scratch | Spring 2026 | Lecture {i}: {n}"
+        s.upsert_meta(VideoMeta(f"cs336lec{i:03d}", channel="Stanford Online", title=title))
     s.commit()
     return TopicContext(s, nlp.HeuristicTagger())
 
