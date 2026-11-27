@@ -126,7 +126,7 @@ def test_v2_database_gets_label_kind(tmp_path):
     conn.commit()
     conn.close()
     with Store(path) as s:
-        assert s.schema_version == 5
+        assert s.schema_version == dbmod.SCHEMA_VERSION
         assert s.conn.execute("SELECT kind FROM labels").fetchone()[0] == "candidate"
         with pytest.raises(sqlite3.IntegrityError):
             s.add_label("Y", "good", kind="nope")

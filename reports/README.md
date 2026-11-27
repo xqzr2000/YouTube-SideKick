@@ -11,5 +11,5 @@ sample.
 | E2 | [Can the interest gate tell on-interest videos from the rest?](E2-interest-gate.md) | part 1 done (M3); part 2 (borderline "partly" seeds) still open |
 | E3 | [How much can one compute fetch and still finish in 90 s?](E3-timing.md) | done (M4, WSL2; rechecked 2026-11-12); ChromeOS paused |
 | E4 | [Does SideKick's ranking beat YouTube's own up-next?](E4-ranker.md) | done: part 1 (M4, v0 vs YouTube), part 2 (M6: learned rankers don't beat v0; performer cap and MMR dropped) |
-| E5 | Taste drift: time-decay half-life | M7 |
+| E5 | Taste drift: are my labels stable over time, and should old 👎 fade? | in progress (M7): scoped down (13 👎 over 9 days); relabel queue + `just e5`, half-life switch off, rule fixed in advance (≥ 40 👎 over ≥ 28 days) |
 | E6 | [Why does YouTube keep recommending what I don't want?](E6-persistence.md) | done (M7): breadth, not stickiness; fresh popular videos from a few channels across contexts |

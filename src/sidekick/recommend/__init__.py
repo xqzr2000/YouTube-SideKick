@@ -239,7 +239,12 @@ def recommend(
         kept_b = [d.candidate for d in b if d.kept]
         if space is None:
             space = build_space(
-                store, profile, e5=e5, paths=paths, extra_ids=[video_id, *pool.cands]
+                store,
+                profile,
+                e5=e5,
+                paths=paths,
+                extra_ids=[video_id, *pool.cands],
+                half_life_days=th.half_life_days,
             )
         c = run_stage_c(store, space, kept_b, current_id=video_id, thresholds=th)
         log_decisions(store, cid, c, stage="C")

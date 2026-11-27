@@ -87,6 +87,7 @@ def tune(store: Store, profile, th: thmod.Thresholds, *, paths=None, e5=None):
         clickbait=th.clickbait,
         promo=th.promo,
         pundit_clickbait=th.pundit_clickbait,
+        half_life_days=th.half_life_days,  # not tuned here (E5 decides it); kept as it was
         source=datetime.now(UTC).isoformat(timespec="seconds"),
         notes={},
     )

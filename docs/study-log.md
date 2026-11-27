@@ -609,6 +609,38 @@ of every session.
   out). Because the rule came first, the result can't be "found" by choosing how to look at
   it. (S11)
 
+### 14.8 Check the data can answer the question before building the model
+- **What:** before fitting anything, count what you have against what the question needs. A
+  half-life is a time scale; estimating one needs feedback spread over several of them.
+- **In SideKick:** E5 asked for a half-life on 👎 feedback. A five-line query showed 13 👎
+  over 9 days and no repeated labels, so a fitted half-life would have been noise. E5 was
+  re-scoped to a measurement that works now (a planned relabel) plus a rule for later. (S12)
+
+### 14.9 Test–retest reliability and Cohen's κ
+- **What:** ask the same question twice, some time apart, and see how often the answers
+  agree. Raw agreement flatters when one answer dominates, so Cohen's κ subtracts the
+  agreement expected by chance: κ = (p_o − p_e) / (1 − p_e). With ordered answers
+  (good > meh > bad), *weighted* κ counts good↔bad as a bigger miss than good↔meh. Rough
+  reading: < 0.4 poor, 0.4–0.6 moderate, 0.6–0.8 substantial, > 0.8 near-perfect.
+- **Drift vs noise:** drift has a direction (a mean shift away from 0, or most changes going
+  one way in the old × new table); noise doesn't. The agreement rate also sets a ceiling: a
+  ranker can't match labels better than the labeler matches themselves.
+- **Blind and random, or it doesn't count:** the old answer is hidden (otherwise you copy it),
+  and the 50 items are a fixed random draw from the first week (otherwise you'd pick the ones
+  you remember). Labels under one current video aren't independent, so the intervals resample
+  current videos (cluster bootstrap, §14.2).
+- **Where:** `sidekick.labeling.relabel_sample`, `sidekick.drift` (`cohen_kappa`,
+  `mean_shift`), queue `relabel` in NB05, `just e5`. (S12)
+
+### 14.10 Exponential decay and a half-life
+- **What:** weight old evidence by 0.5^(age / h): after h days it counts half, after 2h a
+  quarter. One number, easy to explain, and h = ∞ is "no decay", so the old behaviour is a
+  special case you can compare against.
+- **In SideKick:** a switch in Stage C (`half_life_days`, off) on 👎'd videos and the dated
+  Don't-show lines a 👎 appends; hand-written lines never decay, because you wrote them on
+  purpose. The choice of h is pre-registered (§14.7): AUC by h on labels made after each 👎,
+  and h is switched on only if it beats no decay clearly. (S12)
+
 ---
 
 ## 15. Coming next (M7)
@@ -619,7 +651,8 @@ Planned techniques, to be written up here as they're used:
   NDCG and the bad share with the offline estimate; watch 👎 notes for "too repetitive".
 - **Retrying learned rankers** once about 30 current videos are labeled.
 - **Position bias** in clicks, and why clicks stay an online check (M6).
-- **Taste drift:** a time-decay half-life for feedback and profile lines (E5, M7).
+- **Taste drift, part 2:** the relabel result (§14.9), then the half-life rule (§14.10) once
+  there are ≥ 40 👎 over ≥ 28 days (E5, M7).
 - **Model card:** what the ranker is for, its data, metrics and limits (M7).
 
 ---
@@ -642,4 +675,5 @@ Planned techniques, to be written up here as they're used:
 | Learning to rank, grouped CV, nested tuning | 13 | done (M6c) |
 | PU data, position bias | 15 | M7 |
 | Persistence analysis from logs (cluster bootstrap, confounders) | 14 | done (E6) |
+| Label reliability (test–retest, Cohen's κ) and time decay | 14.8–14.10 | started (E5) |
 | Drift analysis, model cards | 15 | M7 |
