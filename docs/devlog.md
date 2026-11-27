@@ -62,6 +62,7 @@ evidence from real pages comes from the owner's runs.
 | #49 | M7 | Short search queries get course words ("Architectures" → "Architectures CS336 Language Modeling"); `just eval --queries` |
 | #50 | M7 | Course cap judged on lecture pools only, by a rule fixed in advance (decides at ≥ 8 lecture pools); `just eval --caps` section |
 | #51 | M7 | Pre-registered rule met: no course cap; the pick step is plain v0 score order |
+| #52 | M7 | E5 (scoped down): relabel queue in the labeling app (schema v6 `relabels`), Stage C half-life switch (off), pre-registered rule; `just e5` |
 
 ---
 
@@ -821,4 +822,41 @@ evidence from real pages comes from the owner's runs.
   now 0.900 and topic alone 0.879, so v0's advantage over its best single part is small; the
   learned-ranker retry (about 30 current videos; 19 now) will say whether a model adds
   anything.
+
+## Session 12 — 2026-11-27: E5 scoped down to what the data can answer
+
+- **Status check:** #51 merged, 270 tests pass on the owner's machine, backend restarted with
+  plain score order.
+- **How much data E5 has** (read-only query on the owner's database): 50 computes over three
+  weeks; **13 👎, all from 11-16 to 11-25** (9 days); 2 clicks (11-07); 762 labels over four
+  weeks; **0 pairs labeled twice in the same context**; 4 profile versions.
+- **What that rules out:** the spec's E5 (fit a time-decay half-life for 👎 and profile lines)
+  needs 👎 spread over weeks; 13 over 9 days can't separate a half-life of 7 days from none.
+  The idea of measuring drift from labels that happened to be repeated also failed: there are
+  none (the Dry Bar "bad then good" case was two different current videos).
+- **Decision (owner, option A of three):**
+  1. **Measure now with a planned relabel.** A new `relabel` queue in the labeling app asks
+     again about 50 candidate labels drawn at random from the first 7 days of labeling (fixed
+     seed, so the sample is the same every time and needs no storing), without showing the old
+     answer. Answers go to a new `relabels` table (schema v6), so `just eval`, `just tune`, E4
+     and E6 see exactly the labels they saw before.
+  2. **A half-life switch, off by default:** `half_life_days` in `thresholds.json`. When set,
+     Stage C multiplies each 👎'd video's similarity and each *dated* Don't-show line's
+     similarity by 0.5^(age / h); undated, hand-written lines never decay. Raw scores stay in
+     the log; decayed ones are logged next to them. `just tune --write` keeps the setting.
+  3. **A pre-registered rule** for switching it on, written before any decayed score was
+     looked at: once there are ≥ 40 👎 over ≥ 28 days, compare the AUC (bad vs good labels) of
+     the 👎 similarity at half-lives none / 60 / 30 / 14 / 7 days, using only 👎 given before
+     each label's compute and leaving out the 👎'd videos themselves; switch on the best one
+     only if it beats no decay by ≥ 0.02 and the paired cluster-bootstrap interval of that gain
+     is above 0. `just e5 --preview` shows the table early but says it isn't for deciding.
+- **`just e5`** reports agreement, Cohen's κ (plain and linearly weighted on
+  good > meh > bad), the mean shift new − old on 2/1/0 and the old × new table, with
+  intervals that resample current videos; then the 👎 timeline and the rule's status.
+- **How to read the relabel result:** disagreement with a clear direction (mean shift interval
+  away from 0) would be drift; disagreement without one is label noise, which also caps how
+  well any ranker can score against these labels.
+- **Checked:** 280 tests; the relabel queue driven in headless Chrome against `marimo run` on
+  a test database (old answer hidden, a tap saves to `relabels`, 50 → 49 left, Undo removes
+  it, `labels` unchanged).
 

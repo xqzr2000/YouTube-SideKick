@@ -24,13 +24,20 @@ Interests?*) is asked first for a seed that has no seed label yet.
 Order within a seed is a fixed shuffle (stable between reruns, the same for everyone), so
 the queue never reveals SideKick's rank or what was shown. Seeds come newest first, so panel
 use gets labeled while it's fresh.
+
+A third queue, ``relabel`` (E5, taste drift), asks again about a fixed random sample of the
+**first week's** candidate labels, without showing the old answer, to measure how stable the
+labels are over time. The sample is drawn the same way every time (fixed seed, fixed window),
+so it never needs storing; the answers go to the ``relabels`` table, never to ``labels``, so
+nothing that evaluates on labels changes. Items are grouped by current video (one context at
+a time, current videos in a fixed shuffle).
 """
 
 from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sidekick.label import _NEVER_SHOWN, _fmt_duration, _fmt_views, latest_seed_label
@@ -39,9 +46,15 @@ from sidekick.recommend import STAGE_RANK
 from sidekick.scrape.fetcher import midpoint_thumbnail_url
 from sidekick.store.db import Store
 
-QUEUES = ("ranked", "filtered")
+QUEUES = ("ranked", "filtered", "relabel")
 LABELS = ("good", "meh", "bad")
 PANEL_TRIGGERS = ("open", "refresh", "click")
+
+# E5 relabel sample, fixed in advance (2026-11-27, before any relabel was made): 50 candidate
+# labels drawn uniformly from those made in the first 7 days of labeling, with this RNG seed.
+RELABEL_N = 50
+RELABEL_WINDOW_DAYS = 7
+RELABEL_SEED = "e5-relabel"
 
 
 @dataclass(frozen=True)
@@ -49,7 +62,8 @@ class Item:
     seed_id: str
     video_id: str
     compute_id: str | None  # newest compute of this seed that had the video in this queue
-    kind: str = "candidate"  # or "seed": the seed question for ``seed_id``
+    kind: str = "candidate"  # or "seed": the seed question for ``seed_id``; or "relabel"
+    label_id: int | None = None  # relabel only: the old label being repeated
 
 
 @dataclass
@@ -173,9 +187,58 @@ def progress(store: Store) -> list[SeedProgress]:
     return out
 
 
-def _queue(store: Store, queue: str, seed: str) -> list[Item]:
+def _ts(s: str) -> datetime:
+    t = datetime.fromisoformat(s)
+    return t if t.tzinfo else t.replace(tzinfo=UTC)
+
+
+def relabel_sample(
+    store: Store,
+    n: int = RELABEL_N,
+    *,
+    window_days: int = RELABEL_WINDOW_DAYS,
+    rng_seed: str = RELABEL_SEED,
+) -> list[Item]:
+    """The fixed E5 sample: ``n`` candidate labels from the first ``window_days`` of labeling,
+    grouped by current video. Deterministic: the window is in the past, so the same database
+    always gives the same sample."""
+    rows = store.conn.execute(
+        """SELECT l.label_id, l.ts, c.current_video_id, l.video_id, l.compute_id FROM labels l
+           JOIN computes c ON c.compute_id = l.compute_id
+           WHERE l.kind = 'candidate' AND c.current_video_id IS NOT NULL
+             AND l.video_id != c.current_video_id
+           ORDER BY l.label_id"""
+    ).fetchall()
+    if not rows:
+        return []
+    end = min(_ts(r[1]) for r in rows) + timedelta(days=window_days)
+    newest: dict[tuple[str, str], tuple] = {}
+    for r in rows:  # newest label per (seed, video) in the window: the one in force back then
+        if _ts(r[1]) < end:
+            newest[(r[2], r[3])] = r
+    pool = sorted(newest.values(), key=lambda r: r[0])
+    picked = random.Random(rng_seed).sample(pool, min(n, len(pool)))
+    seeds = sorted({r[2] for r in picked})
+    random.Random(f"{rng_seed}:seeds").shuffle(seeds)
+    order = {s: i for i, s in enumerate(seeds)}
+    picked.sort(key=lambda r: (order[r[2]], random.Random(f"{rng_seed}:{r[0]}").random()))
+    return [Item(r[2], r[3], r[4], kind="relabel", label_id=r[0]) for r in picked]
+
+
+def relabeled_ids(store: Store) -> set[int]:
+    return {r[0] for r in store.conn.execute("SELECT DISTINCT label_id FROM relabels")}
+
+
+def _queue(store: Store, queue: str, seed: str | None) -> list[Item]:
     if queue not in QUEUES:
         raise ValueError(f"queue must be one of {QUEUES}")
+    if queue == "relabel":
+        done = relabeled_ids(store)
+        return [
+            it
+            for it in relabel_sample(store)
+            if it.label_id not in done and (seed is None or it.seed_id == seed)
+        ]
     if queue == "ranked":
         pool = {vid: cid for vid, (cid, _) in ranked_pools(store).get(seed, {}).items()}
     else:
@@ -195,7 +258,10 @@ def next_item(
 ) -> Item | None:
     """The next thing to ask: the seed question for a seed without a seed label, else the next
     unlabeled, unskipped video of that seed's queue. ``seed=None`` takes the newest seed whose
-    queue isn't finished."""
+    queue isn't finished. The ``relabel`` queue has no seed question and keeps its own order."""
+    if queue == "relabel":
+        items = [it for it in _queue(store, queue, seed) if (it.seed_id, it.video_id) not in skip]
+        return items[0] if items else None
     if seed is None:
         seed_list = [p.seed_id for p in progress(store)]
     else:
@@ -211,15 +277,19 @@ def next_item(
 
 
 def remaining(store: Store, queue: str, seed: str) -> int:
-    return len(_queue(store, queue, seed))
+    """Items left for ``seed`` (for ``relabel``: left in the whole sample)."""
+    return len(_queue(store, queue, None if queue == "relabel" else seed))
 
 
 def save(store: Store, item: Item, label: str, *, reason: str = "", session: str) -> int:
-    """Store one label; returns its id (for undo)."""
+    """Store one label; returns its id (for undo: a ``relabels`` id for a relabel item, see
+    :func:`undo`)."""
     if label not in LABELS:
         raise ValueError(f"label must be one of {LABELS}")
     if item.kind == "seed":
         return store.add_label(item.seed_id, label, kind="seed", session=session)
+    if item.kind == "relabel":
+        return store.add_relabel(item.label_id, label, reason=reason.strip(), session=session)
     return store.add_label(
         item.video_id,
         label,
@@ -228,6 +298,14 @@ def save(store: Store, item: Item, label: str, *, reason: str = "", session: str
         reason=reason.strip(),
         session=session,
     )
+
+
+def undo(store: Store, item_kind: str, row_id: int) -> None:
+    """Take back what :func:`save` stored for an item of this kind."""
+    if item_kind == "relabel":
+        store.delete_relabel(row_id)
+    else:
+        store.delete_label(row_id)
 
 
 def recent_reasons(store: Store, n: int = 10) -> list[str]:

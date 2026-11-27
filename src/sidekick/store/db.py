@@ -1,7 +1,8 @@
 """SQLite store: ``~/.sidekick/sidekick.db``. Everything a compute sees and decides is logged here.
 
 Tables (spec §7): ``videos``, ``video_snapshots``, ``embeddings``, ``computes``, ``queries``,
-``candidates``, ``decisions``, ``impressions``, ``feedback``, ``labels``, ``profile_versions``.
+``candidates``, ``decisions``, ``impressions``, ``feedback``, ``labels``, ``profile_versions``,
+and (v6, E5) ``relabels``.
 
 Conventions:
 
@@ -29,7 +30,7 @@ from sidekick.config import Paths, get_paths
 from sidekick.models import Candidate, VideoMeta
 from sidekick.profile.parser import Profile, normalize
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 TABLES = (
     "videos",
@@ -43,6 +44,7 @@ TABLES = (
     "feedback",
     "labels",
     "profile_versions",
+    "relabels",
 )
 
 _SCHEMA_V1 = """
@@ -198,7 +200,29 @@ ALTER TABLE computes ADD COLUMN gate_interest TEXT;
 ALTER TABLE computes ADD COLUMN gate_rep TEXT;
 """
 
-_MIGRATIONS = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3, 4: _SCHEMA_V4, 5: _SCHEMA_V5}
+# v6 (M7, E5): blind relabels of old labels, to measure how stable the labels are over time.
+# Kept apart from ``labels`` on purpose: every analysis that reads ``labels`` (just eval, just
+# tune, E4, E6) stays exactly as it was, and each relabel points at the label it repeats.
+_SCHEMA_V6 = """
+CREATE TABLE relabels (
+    relabel_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts          TEXT NOT NULL,
+    label_id    INTEGER NOT NULL REFERENCES labels(label_id) ON DELETE CASCADE,
+    label       TEXT NOT NULL CHECK (label IN ('good', 'meh', 'bad')),
+    reason      TEXT,
+    session     TEXT
+);
+CREATE INDEX idx_relabels_label ON relabels(label_id);
+"""
+
+_MIGRATIONS = {
+    1: _SCHEMA_V1,
+    2: _SCHEMA_V2,
+    3: _SCHEMA_V3,
+    4: _SCHEMA_V4,
+    5: _SCHEMA_V5,
+    6: _SCHEMA_V6,
+}
 
 
 def now_iso() -> str:
@@ -581,9 +605,38 @@ class Store:
         with self.conn:
             self.conn.execute("DELETE FROM labels WHERE label_id = ?", (label_id,))
 
+    def add_relabel(
+        self,
+        label_id: int,
+        label: str,
+        *,
+        reason: str | None = None,
+        session: str | None = None,
+        ts: str | None = None,
+    ) -> int:
+        """A blind repeat of label ``label_id`` (E5). Never touches ``labels``."""
+        with self.conn:
+            cur = self.conn.execute(
+                "INSERT INTO relabels (ts, label_id, label, reason, session) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (ts or now_iso(), label_id, label, (reason or "").strip() or None, session),
+            )
+        return int(cur.lastrowid)
+
+    def delete_relabel(self, relabel_id: int) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM relabels WHERE relabel_id = ?", (relabel_id,))
+
     def downvoted_video_ids(self) -> set[str]:
         rows = self.conn.execute("SELECT DISTINCT video_id FROM feedback WHERE type = 'downvote'")
         return {r[0] for r in rows}
+
+    def downvote_times(self) -> dict[str, str]:
+        """``{video_id: ts of its newest 👎}`` (a repeated 👎 counts from the newest one)."""
+        rows = self.conn.execute(
+            "SELECT video_id, MAX(ts) FROM feedback WHERE type = 'downvote' GROUP BY video_id"
+        )
+        return {r[0]: r[1] for r in rows}
 
     def commit(self) -> None:
         self.conn.commit()

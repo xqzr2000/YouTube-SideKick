@@ -84,6 +84,11 @@ label-app:
 e6 *args:
     uv run python -m sidekick.e6 "$@"
 
+# E5: label stability (relabel queue in the labeling app) and the 👎 half-life rule
+[positional-arguments]
+e5 *args:
+    uv run python -m sidekick.drift "$@"
+
 # M6b/M6c: NDCG@10 of v0, baselines (and with --learn, learned rankers) on labeled pools
 [positional-arguments]
 eval *args:

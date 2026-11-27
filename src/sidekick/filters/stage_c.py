@@ -25,6 +25,12 @@ and logged; backfill (M4) is what acts on it.
 Every score is logged as a feature whether it drops the video or not, so thresholds can be
 re-tuned from the log without re-running anything.
 
+**Half-life (E5, off by default).** With ``half_life_days`` set in ``thresholds.json``, each
+👎'd video's similarity and each *dated* Don't-show line's similarity (the lines a 👎 appends)
+is multiplied by ``0.5 ** (age / half_life)`` before the max and the threshold; hand-written
+undated lines never decay. The raw scores stay in ``dont_show_sim`` / ``downvoted_sim`` and the
+decayed ones are logged as ``*_decayed``. See ``sidekick.drift`` for the rule that decides it.
+
 **News context** (decided 2026-11-05, Russell: while watching news, show news, not pundits).
 When the current video is news (:func:`sidekick.topic.news_context`: YouTube category
 "News & Politics" or "news" in the channel/title), a Don't-show-me match only drops a candidate
@@ -39,10 +45,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
 
+from sidekick.drift import age_days, decay_weight
 from sidekick.embed import center, corpus, encode_videos
 from sidekick.embed import e5 as e5mod
 from sidekick.embed.tfidf import TfidfRep
@@ -68,6 +76,9 @@ class SimSpace:
     dont_show_vecs: np.ndarray  # centered
     downvoted_vecs: np.ndarray  # centered
     stats: dict[str, int] = field(default_factory=dict)
+    half_life_days: float | None = None  # E5; None = no decay
+    dont_show_w: np.ndarray | None = None  # decay weight per Don't-show line
+    downvoted_w: np.ndarray | None = None  # decay weight per 👎'd video
 
     @property
     def name(self) -> str:
@@ -98,11 +109,15 @@ def build_space(
     e5=None,
     paths=None,
     extra_ids: Sequence[str] = (),
+    half_life_days: float | None = None,
+    now: datetime | None = None,
 ) -> SimSpace:
     """The similarity space for one compute. ``extra_ids`` (the current video and the
-    survivors) are embedded up front so a young database still gets a sensible mean."""
+    survivors) are embedded up front so a young database still gets a sensible mean.
+    ``half_life_days`` (E5) sets decay weights for 👎'd videos and dated Don't-show lines."""
     interests = list(profile.interests)
-    dont_show = [d.text for d in profile.dont_show if d.text]
+    dont_show_items = [d for d in profile.dont_show if d.text]
+    dont_show = [d.text for d in dont_show_items]
     if e5 is None:
         e5 = e5mod.load(paths)
     if e5 is not None:
@@ -141,10 +156,21 @@ def build_space(
 
     space.interest_vecs = lines(interests)
     space.dont_show_vecs = lines(dont_show)
-    down = sorted(store.downvoted_video_ids())
+    down_ts = store.downvote_times()
+    down = sorted(down_ts)
     space.downvoted_vecs = (
         space.videos(store, down)[1] if down else np.zeros((0, space.mean.shape[1]), np.float32)
     )
+    if half_life_days is not None:
+        now = now or datetime.now(UTC)
+        space.half_life_days = half_life_days
+        space.dont_show_w = np.array(
+            [decay_weight(age_days(d.date, now), half_life_days) for d in dont_show_items],
+            np.float32,
+        )
+        space.downvoted_w = np.array(
+            [decay_weight(age_days(down_ts[v], now), half_life_days) for v in down], np.float32
+        )
     return space
 
 
@@ -168,10 +194,14 @@ def interest_gate(store: Store, space: SimSpace, current_id: str, tau: float) ->
     return GateResult(mode, score, space.interests[j], tau, space.name)
 
 
-def _max(vec: np.ndarray, mat: np.ndarray) -> tuple[float | None, int | None]:
+def _max(
+    vec: np.ndarray, mat: np.ndarray, w: np.ndarray | None = None
+) -> tuple[float | None, int | None]:
     if mat is None or mat.shape[0] == 0:
         return None, None
     s = mat @ vec
+    if w is not None:
+        s = s * w
     j = int(np.argmax(s))
     return round(float(s[j]), 4), j
 
@@ -206,6 +236,12 @@ def run_stage_c(
             feats["dont_show_line"] = space.dont_show[dj]
         dv, _ = _max(cen[i], space.downvoted_vecs)
         feats["downvoted_sim"] = dv
+        if space.half_life_days is not None:  # E5: decide on the decayed scores
+            feats["half_life_days"] = space.half_life_days
+            ds, dj = _max(cen[i], space.dont_show_vecs, space.dont_show_w)
+            dv, _ = _max(cen[i], space.downvoted_vecs, space.downvoted_w)
+            feats["dont_show_sim_decayed"] = ds
+            feats["downvoted_sim_decayed"] = dv
         isim, ij = _max(cen[i], space.interest_vecs)
         feats["interest_sim"] = isim
         if ij is not None:

@@ -46,6 +46,9 @@ def _(mo):
       video, shown or not. M6 compares rankers by re-ranking these pools, so the app finishes
       one current video's pool before moving to the next.
     - **filtered**: videos the filters dropped, to measure false removals.
+    - **relabel** (E5): 50 labels from your first week of labeling, asked again without
+      your old answer, to see whether your taste moved. Answer as you would today. These go
+      to a separate table, so nothing else changes.
 
     Scores, ranks and filter decisions are hidden on purpose, so they can't steer the label,
     and the order is shuffled. For a current video without a seed label, the app first asks
@@ -155,6 +158,7 @@ def _(
     item,
     left,
     mo,
+    queue,
     reasons,
     seed_card,
     session,
@@ -181,7 +185,7 @@ def _(
                 _reason = (reason_text.value or "").strip() or (reason_pick.value or "")
                 with db() as s:
                     lid = L.save(s, item, label, reason=_reason, session=session)
-                set_history(lambda h: (*h, lid))
+                set_history(lambda h: (*h, (item.kind, lid)))
             set_tick(lambda t: t + 1)
 
         return _on_click
@@ -205,7 +209,9 @@ def _(
     if item is None:
         view = mo.callout(
             mo.md(
-                "Nothing left in this queue. Pick another current video or queue, or use "
+                "Relabel sample done: `just e5` shows how your answers compare."
+                if queue.value == "relabel"
+                else "Nothing left in this queue. Pick another current video or queue, or use "
                 "the panel on more videos."
             ),
             kind="success",
@@ -221,11 +227,12 @@ def _(
             ]
         )
     else:
+        _left = "in the relabel sample" if item.kind == "relabel" else "for this video"
         view = mo.vstack(
             [
                 mo.md(
                     f"<small>While watching</small> **{seed_card['title']}** "
-                    f"<small>({seed_card['channel']}) · {left} left for this video</small>"
+                    f"<small>({seed_card['channel']}) · {left} left {_left}</small>"
                 ),
                 mo.md("### Would you want this shown next?"),
                 video_card_html(video_card, 320),
@@ -239,13 +246,14 @@ def _(
 
 
 @app.cell
-def _(db, get_history, mo, set_history, set_tick):
+def _(L, db, get_history, mo, set_history, set_tick):
     def _undo(_):
         h = get_history()
         if not h:
             return
+        _kind, _id = h[-1]
         with db() as s:
-            s.delete_label(h[-1])
+            L.undo(s, _kind, _id)
         set_history(h[:-1])
         set_tick(lambda t: t + 1)
 

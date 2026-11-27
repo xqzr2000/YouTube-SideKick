@@ -51,6 +51,9 @@ class Thresholds:
     clickbait: float = DEFAULT_TEXT["clickbait"]
     promo: float = DEFAULT_TEXT["promo"]
     pundit_clickbait: float = PUNDIT_CLICKBAIT
+    # E5: half-life in days for 👎'd videos and dated Don't-show lines in Stage C. None = off
+    # (the default); switched on only by the pre-registered rule in ``sidekick.drift``.
+    half_life_days: float | None = None
     source: str = "defaults"  # "defaults" or the tuning timestamp
     notes: dict[str, Any] = field(default_factory=dict)
 
@@ -80,6 +83,8 @@ def load(paths: Paths | None = None) -> Thresholds:
     t.clickbait = float(raw.get("clickbait", t.clickbait))
     t.promo = float(raw.get("promo", t.promo))
     t.pundit_clickbait = float(raw.get("pundit_clickbait", t.pundit_clickbait))
+    hl = raw.get("half_life_days")
+    t.half_life_days = float(hl) if hl not in (None, "", 0) else None
     t.source = str(raw.get("source", "file"))
     t.notes = raw.get("notes") or {}
     return t
